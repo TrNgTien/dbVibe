@@ -1,0 +1,7 @@
+.gocache*
+.gomodcache
+build/bin
+frontend/.npm-cache
+frontend/dist
+frontend/node_modules
+frontend/wailsjs
