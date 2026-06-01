@@ -452,8 +452,10 @@ function App() {
 
   async function deleteConnection() {
     if (!draft.id) return;
+    const connId = draft.id;
+    const objectKeyPrefix = `${connId}_`;
     await run("delete connection", () =>
-      api.call("DeleteConnection", draft.id),
+      api.call("DeleteConnection", connId),
     );
     setSelected(null);
     setCreatingConnection(false);
@@ -464,7 +466,26 @@ function App() {
     setConnectionStatus("disconnected");
     setConnectedConnections((current) => {
       const next = { ...current };
-      delete next[draft.id];
+      delete next[connId];
+      return next;
+    });
+    setDetails((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
+    setExpandedConnections((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
+    setExpandedObjects((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(objectKeyPrefix)) {
+          delete next[key];
+        }
+      }
       return next;
     });
     await refreshConnections();
@@ -512,6 +533,7 @@ function App() {
         [conn.id]: true,
       }));
       setConnectionStatus("connected");
+      return next;
     } catch (err) {
       setConnectionStatus("error");
       throw err;
@@ -554,31 +576,30 @@ function App() {
 
   async function openTable(table, connId = selected?.id) {
     if (!connId) return;
-    const detailForConn = details[connId];
     const conn = connections.find((c) => c.id === connId);
-    const driver = detailForConn?.driver || conn?.driver;
+    if (!conn) return;
+    let activeDetail =
+      connId === selected?.id ? detail || details[connId] : null;
+    if (connId !== selected?.id) {
+      activeDetail = await connect(conn);
+    }
+    const driver = activeDetail?.driver || conn.driver;
+    const database = activeDetail?.database || "";
     const next = await run("table detail", () =>
       api.call(
         "GetDatabaseTableDetail",
         connId,
-        detailForConn?.database || "",
+        database,
         table.schema,
         table.name,
         100,
       ),
     );
-    const applyTableDetail = () => {
-      setTableDetail(next);
-      setResult(next.sample);
-      setSqlText(
-        `select * from ${quoteName(driver, table.schema, table.name)} limit 100`,
-      );
-    };
-    if (connId === selected?.id) {
-      applyTableDetail();
-    } else {
-      connect(conn).then(applyTableDetail);
-    }
+    setTableDetail(next);
+    setResult(next.sample);
+    setSqlText(
+      `select * from ${quoteName(driver, table.schema, table.name)} limit 100`,
+    );
   }
 
   async function execute() {
@@ -688,7 +709,10 @@ function App() {
           setDetails((prev) => ({ ...prev, [conn.id]: next }));
           setConnectedConnections((prev) => ({ ...prev, [conn.id]: true }));
         })
-        .catch((err) => console.error("Failed to connect on expand", err));
+        .catch((err) => {
+          console.error("Failed to connect on expand", err);
+          setExpandedConnections((prev) => ({ ...prev, [conn.id]: false }));
+        });
     }
     setExpandedConnections((current) => ({
       ...current,
@@ -1064,24 +1088,38 @@ function SidebarTree({
 
         return (
           <div key={conn.id} className="treeBranch">
-            <button
+            <div
               className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
-              onClick={() => onSelectConnection(conn)}
               onContextMenu={(event) => onContextMenu(event, conn)}
             >
-              <div
+              <span
                 className="treeChevron connectionChevron"
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
                 onClick={(e) => onToggleConnection(conn, e)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onToggleConnection(conn, e);
+                  }
+                }}
               >
                 {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </div>
-              <span className="connectionName">
-                <StatusDot status={isConnected ? "connected" : "disconnected"} />
-                <DriverLogo driver={conn.driver} />
-                {conn.name}
               </span>
-              <small>{driverLabel(conn.driver)}</small>
-            </button>
+              <button
+                type="button"
+                className="connectionSelect"
+                onClick={() => onSelectConnection(conn)}
+              >
+                <span className="connectionName">
+                  <StatusDot status={isConnected ? "connected" : "disconnected"} />
+                  <DriverLogo driver={conn.driver} />
+                  {conn.name}
+                </span>
+                <small>{driverLabel(conn.driver)}</small>
+              </button>
+            </div>
 
             {isExpanded && (
               <div className="treeChildren connectionChildren">

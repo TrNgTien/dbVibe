@@ -81,7 +81,8 @@ button:disabled {
 .app {
   display: grid;
   grid-template-columns: 360px 1fr;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .startup {
@@ -380,6 +381,8 @@ small {
 .main {
   padding: 18px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
@@ -388,6 +391,7 @@ small {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  flex: 0 0 auto;
 }
 
 h1,
@@ -450,6 +454,8 @@ h3 {
   grid-template-columns: 430px minmax(0, 1fr);
   gap: 12px;
   margin-bottom: 12px;
+  flex: 1;
+  min-height: 0;
 }
 
 .grid.queryOnly {
@@ -463,6 +469,11 @@ h3 {
   overflow: hidden;
 }
 
+.queryPanel {
+  display: flex;
+  flex-direction: column;
+}
+
 .panelHead {
   min-height: 45px;
   border-bottom: 1px solid #2c333d;
@@ -471,6 +482,7 @@ h3 {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .panelHead.compact {
@@ -565,12 +577,16 @@ textarea {
 }
 
 .sqlEditor {
-  height: 183px;
+  flex: 1;
+  min-height: 0;
   background: #101318;
+  display: flex;
+  flex-direction: column;
 }
 
 .sqlEditor .cm-editor {
-  height: 183px;
+  flex: 1;
+  min-height: 0;
   background: #101318;
   color: #e8edf2;
   font-family: "SFMono-Regular", Consolas, monospace;
@@ -655,16 +671,16 @@ textarea {
 }
 
 .workspace {
-  height: calc(100vh - 332px);
-  min-height: 430px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .content {
+  flex: 1;
   min-height: 0;
   overflow: auto;
-}
-
-.content {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -774,6 +790,39 @@ textarea {
   color: #8f98a4;
 }
 
+.connectionItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  cursor: default;
+}
+
+.connectionSelect {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0;
+  gap: 8px;
+  color: inherit;
+  min-height: 0;
+}
+
+.connectionSelect:hover {
+  background: transparent;
+}
+
+.connectionChevron {
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
 .treeIndent {
   width: 15px;
   flex: 0 0 auto;
@@ -869,8 +918,8 @@ pre {
 }
 
 .tracePage {
-  height: calc(100vh - 112px);
-  min-height: 520px;
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
@@ -1185,6 +1234,7 @@ td {
   border-radius: 7px;
   padding: 9px 11px;
   margin-bottom: 10px;
+  flex: 0 0 auto;
 }
 
 .error {
@@ -1213,6 +1263,7 @@ td {
 
 .settingsPanel {
   margin-bottom: 12px;
+  flex: 0 0 auto;
 }
 
 .empty {
