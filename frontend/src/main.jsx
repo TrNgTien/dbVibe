@@ -675,9 +675,30 @@ function App() {
   async function closeConnectedConnection(conn = selected) {
     if (!conn?.id) return;
     await run("close connection", () => api.call("CloseConnection", conn.id, ""));
+    const connId = conn.id;
+    const objectKeyPrefix = `${connId}_`;
     setConnectedConnections((current) => {
       const next = { ...current };
-      delete next[conn.id];
+      delete next[connId];
+      return next;
+    });
+    setDetails((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
+    setExpandedConnections((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
+    setExpandedObjects((current) => {
+      const next = { ...current };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(objectKeyPrefix)) {
+          delete next[key];
+        }
+      }
       return next;
     });
     if (selected?.id === conn.id) {
@@ -708,19 +729,20 @@ function App() {
     if (event) {
       event.stopPropagation();
     }
-    setExpandedConnections((current) => {
-      const isExpanded = current[conn.id];
-      if (!isExpanded && !details[conn.id] && !connectedConnections[conn.id]) {
-        api.call("Connect", conn.id).then(next => {
-          setDetails(prev => ({ ...prev, [conn.id]: next }));
-          setConnectedConnections(prev => ({ ...prev, [conn.id]: true }));
-        }).catch(err => console.error("Failed to connect on expand", err));
-      }
-      return {
-        ...current,
-        [conn.id]: !isExpanded,
-      };
-    });
+    const isExpanded = expandedConnections[conn.id];
+    const willExpand = !isExpanded;
+    if (willExpand && !details[conn.id] && !connectedConnections[conn.id]) {
+      api.call("Connect", conn.id)
+        .then((next) => {
+          setDetails((prev) => ({ ...prev, [conn.id]: next }));
+          setConnectedConnections((prev) => ({ ...prev, [conn.id]: true }));
+        })
+        .catch((err) => console.error("Failed to connect on expand", err));
+    }
+    setExpandedConnections((current) => ({
+      ...current,
+      [conn.id]: willExpand,
+    }));
   }
 
   function toggleObject(connId, key) {
