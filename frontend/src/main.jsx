@@ -9,6 +9,55 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { MySQL, PostgreSQL, sql } from "@codemirror/lang-sql";
+import { json } from "@codemirror/lang-json";
+import { StreamLanguage } from "@codemirror/language";
+
+const redisMode = {
+  token(stream) {
+    if (stream.eatSpace()) return null;
+    if (stream.match(/^".*?"|^'.*?'/)) return "string";
+    if (stream.match(/^-?\d+(?:\.\d+)?/)) return "number";
+    const word = stream.match(/^[\w:-]+/);
+    if (word) {
+      if (stream.pos === word[0].length || stream.string.substring(0, stream.start).trim().length === 0) {
+        return "keyword";
+      }
+      return "variableName";
+    }
+    stream.next();
+    return null;
+  }
+};
+
+const elasticsearchMode = {
+  token(stream, state) {
+    if (stream.pos === 0) {
+      state.line++;
+    }
+    if (state.line === 1) {
+      if (stream.eatSpace()) return null;
+      if (stream.match(/^(GET|POST|PUT|DELETE|HEAD)\b/i)) return "keyword";
+      if (stream.match(/^\S+/)) return "string";
+      stream.next();
+      return null;
+    }
+    // Simple JSON fallback if json() fails to mix properly
+    if (stream.eatSpace()) return null;
+    if (stream.match(/^".*?"/)) return "string";
+    if (stream.match(/^-?\d+(?:\.\d+)?/)) return "number";
+    if (stream.match(/^(true|false|null)\b/)) return "keyword";
+    if (stream.match(/^[{}[\]:,]/)) return "punctuation";
+    stream.next();
+    return null;
+  },
+  startState() { return { line: 0 }; }
+};
+
+const redisLanguage = StreamLanguage.define(redisMode);
+const elasticsearchLanguage = StreamLanguage.define(elasticsearchMode);
+import { json } from "@codemirror/lang-json";
+import { StreamLanguage } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { EditorState } from "@codemirror/state";
 import {
   drawSelection,
@@ -572,16 +621,20 @@ function App() {
 
   async function execute() {
     if (!selected?.id) return;
+    const selection = editorRef.current?.getSelection?.();
+    const queryToRun = selection || sqlText;
     const next = await run("execute", () =>
-      api.call("ExecuteDatabase", selected.id, detail?.database || "", sqlText, 500),
+      api.call("ExecuteDatabase", selected.id, detail?.database || "", queryToRun, 500),
     );
     setResult(next);
   }
 
   async function explainAnalyze() {
     if (!selected?.id) return;
+    const selection = editorRef.current?.getSelection?.();
+    const queryToRun = selection || sqlText;
     const next = await run("explain", () =>
-      api.call("ExplainAnalyzeDatabase", selected.id, detail?.database || "", sqlText),
+      api.call("ExplainAnalyzeDatabase", selected.id, detail?.database || "", queryToRun),
     );
     setExplain(next);
   }
@@ -1207,6 +1260,12 @@ function SqlEditor({ value, onChange, detail, editorRef }) {
     if (!containerRef.current) return;
 
     const dialect = detail?.driver === "mysql" ? MySQL : PostgreSQL;
+    const languageExtension = detail?.driver === "redis" 
+      ? redisLanguage 
+      : detail?.driver === "elasticsearch" 
+        ? elasticsearchLanguage 
+        : sql({ dialect });
+
     const view = new EditorView({
       parent: containerRef.current,
       state: EditorState.create({
@@ -1217,7 +1276,7 @@ function SqlEditor({ value, onChange, detail, editorRef }) {
           history(),
           drawSelection(),
           dropCursor(),
-          sql({ dialect }),
+          languageExtension,
           autocompletion({
             activateOnTyping: true,
             override: [
@@ -1245,7 +1304,16 @@ function SqlEditor({ value, onChange, detail, editorRef }) {
     });
 
     viewRef.current = view;
-    editorRef.current = { focus: () => view.focus() };
+    editorRef.current = {
+      focus: () => view.focus(),
+      getSelection: () => {
+        const selection = view.state.selection.main;
+        if (!selection.empty) {
+          return view.state.sliceDoc(selection.from, selection.to);
+        }
+        return "";
+      },
+    };
 
     return () => {
       if (editorRef.current?.focus) editorRef.current = null;
