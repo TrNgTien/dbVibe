@@ -162,6 +162,93 @@ func fetchRedisKeys(ctx context.Context, conn store.Connection, pattern string) 
 	return keys, nil
 }
 
+var esMethods = []string{"GET", "POST", "PUT", "DELETE", "HEAD"}
+var esEndpoints = []string{"_search", "_count", "_mapping", "_doc", "_alias", "_update", "_bulk"}
+
 func getElasticsearchCompletions(ctx context.Context, conn store.Connection, textBeforeCursor string) ([]CompletionItem, error) {
-	return nil, nil
+	// We only provide completions for the first line (the HTTP line) in Kibana syntax.
+	// If there's a newline, we're likely in the JSON body.
+	if strings.Contains(textBeforeCursor, "\n") {
+		return nil, nil
+	}
+
+	parts := strings.Fields(textBeforeCursor)
+	
+	// If empty or no spaces yet, suggest HTTP methods
+	if len(parts) == 0 || (len(parts) == 1 && !strings.HasSuffix(textBeforeCursor, " ")) {
+		var items []CompletionItem
+		prefix := ""
+		if len(parts) == 1 {
+			prefix = strings.ToUpper(parts[0])
+		}
+		for _, method := range esMethods {
+			if strings.HasPrefix(method, prefix) {
+				items = append(items, CompletionItem{
+					Label:  method,
+					Detail: "method",
+					Type:   "keyword",
+					Apply:  method + " ",
+				})
+			}
+		}
+		return items, nil
+	}
+
+	// If we are on the second part (path), suggest indices and endpoints
+	pathPrefix := ""
+	if !strings.HasSuffix(textBeforeCursor, " ") {
+		pathPrefix = parts[len(parts)-1]
+	}
+
+	// Remove leading slash for matching, but keep it in mind
+	searchPrefix := strings.TrimPrefix(pathPrefix, "/")
+
+	var items []CompletionItem
+	
+	// Suggest endpoints if we are typing one (starts with _)
+	if strings.HasPrefix(searchPrefix, "_") || searchPrefix == "" {
+		for _, ep := range esEndpoints {
+			if strings.HasPrefix(ep, searchPrefix) {
+				// We usually want a slash before it if it's the root, but let's just supply it
+				applyStr := ep
+				if !strings.HasPrefix(pathPrefix, "/") && pathPrefix != "" {
+					// if user typed "_se", apply "_search"
+					applyStr = ep
+				} else if pathPrefix == "" {
+					applyStr = "/" + ep
+				} else if strings.HasPrefix(pathPrefix, "/") {
+					applyStr = "/" + ep
+				}
+				items = append(items, CompletionItem{
+					Label:  ep,
+					Detail: "endpoint",
+					Type:   "keyword",
+					Apply:  applyStr,
+				})
+			}
+		}
+	}
+
+	// Fetch indices dynamically
+	indices, err := elasticsearchIndices(ctx, conn)
+	if err == nil {
+		for _, idx := range indices {
+			if strings.HasPrefix(idx.Name, searchPrefix) {
+				applyStr := idx.Name
+				if strings.HasPrefix(pathPrefix, "/") {
+					applyStr = "/" + idx.Name
+				} else if pathPrefix == "" {
+					applyStr = "/" + idx.Name
+				}
+				items = append(items, CompletionItem{
+					Label:  idx.Name,
+					Detail: "index",
+					Type:   "variable",
+					Apply:  applyStr,
+				})
+			}
+		}
+	}
+
+	return items, nil
 }
