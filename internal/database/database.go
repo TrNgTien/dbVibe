@@ -74,7 +74,7 @@ type QueryResult struct {
 	Columns      []string            `json:"columns"`
 	Rows         []map[string]string `json:"rows"`
 	RowsAffected int64               `json:"rowsAffected"`
-	DurationMS   int64               `json:"durationMs"`
+	DurationMS   float64             `json:"durationMs"`
 	Message      string              `json:"message"`
 }
 
@@ -207,7 +207,7 @@ func Execute(ctx context.Context, db *sql.DB, driver, sqlText string, limit int)
 	if err == nil {
 		defer rows.Close()
 		result, scanErr := scanRows(rows, limit)
-		result.DurationMS = time.Since(start).Milliseconds()
+		result.DurationMS = float64(time.Since(start).Microseconds()) / 1000.0
 		return result, scanErr
 	}
 	result, execErr := db.ExecContext(ctx, sqlText)
@@ -217,7 +217,7 @@ func Execute(ctx context.Context, db *sql.DB, driver, sqlText string, limit int)
 	affected, _ := result.RowsAffected()
 	return QueryResult{
 		RowsAffected: affected,
-		DurationMS:   time.Since(start).Milliseconds(),
+		DurationMS:   float64(time.Since(start).Microseconds()) / 1000.0,
 		Message:      fmt.Sprintf("%d rows affected", affected),
 	}, nil
 }

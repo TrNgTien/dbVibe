@@ -264,6 +264,15 @@ function App() {
   const [connectionFilter, setConnectionFilter] = useState("");
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
+  const toastTimeoutRef = useRef(null);
+
+  const showToast = (message) => {
+    setToast(message);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => setToast(""), 3000);
+  };
+
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [connectedConnections, setConnectedConnections] = useState({});
   const [connectionMenu, setConnectionMenu] = useState(null);
@@ -467,7 +476,12 @@ function App() {
   }
 
   async function testConnection() {
-    await run("test connection", () => api.call("TestConnection", draft));
+    try {
+      await run("test connection", () => api.call("TestConnection", draft));
+      showToast("Connection successful");
+    } catch (e) {
+      // error handled by run()
+    }
   }
 
   async function connect(conn = selected) {
@@ -794,6 +808,7 @@ function App() {
 
         {error && <div className="error">{error}</div>}
         {loading && <div className="loading">Running {loading}...</div>}
+        {toast && <div className="toast">{toast}</div>}
 
         {settingsOpen && (
           <SettingsPanel

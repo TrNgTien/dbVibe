@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -202,6 +205,93 @@ func (a *App) SaveQuery(query store.SavedQuery) (store.SavedQuery, error) {
 
 func (a *App) DeleteQuery(id string) error {
 	return a.store.DeleteQuery(id)
+}
+
+func (a *App) ListBinlogs(connectionID string) ([]string, error) {
+	conn, db, err := a.openStored(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	if conn.Driver != "mysql" {
+		return nil, errors.New("binlogs are only supported for MySQL")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "SHOW BINARY LOGS")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var binlogs []string
+	for rows.Next() {
+		cols, _ := rows.Columns()
+		vals := make([]interface{}, len(cols))
+		for i := range cols {
+			vals[i] = new(sql.RawBytes)
+		}
+		if err := rows.Scan(vals...); err != nil {
+			return nil, err
+		}
+		binlogs = append(binlogs, string(*vals[0].(*sql.RawBytes)))
+	}
+	return binlogs, nil
+}
+
+func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
+	conn, err := a.store.GetConnection(connectionID)
+	if err != nil {
+		return "", err
+	}
+	if conn.Driver != "mysql" {
+		return "", errors.New("binlogs are only supported for MySQL")
+	}
+
+	tmpFile, err := os.CreateTemp("", "binlog-*.sql")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	args := []string{
+		"--read-from-remote-server",
+		"--host=" + conn.Host,
+		"--port=" + strconv.Itoa(conn.Port),
+		"--user=" + conn.User,
+		"--password=" + conn.Password,
+		"--base64-output=DECODE-ROWS",
+		"-v",
+		logName,
+	}
+
+	cmd := exec.Command("mysqlbinlog", args...)
+
+	outFile, err := os.Create(tmpPath)
+	if err != nil {
+		return "", err
+	}
+	cmd.Stdout = outFile
+	cmd.Stderr = outFile
+
+	err = cmd.Run()
+	outFile.Close()
+
+	content, readErr := os.ReadFile(tmpPath)
+	if readErr != nil {
+		return "", readErr
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("mysqlbinlog failed: %v\nOutput: %s", err, string(content))
+	}
+
+	return string(content), nil
 }
 
 func (a *App) openStored(connectionID string) (store.Connection, *sql.DB, error) {

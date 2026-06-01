@@ -64,6 +64,20 @@ button:disabled {
   background: #1d76f2;
 }
 
+.primary.success {
+  border-color: #317d43;
+  background: #258c42;
+}
+
+.primary.success:hover {
+  background: #2fa14e;
+}
+
+.primary.success:disabled {
+  opacity: 0.9;
+  cursor: default;
+}
+
 .app {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -575,6 +589,17 @@ textarea {
 .sqlEditor .cm-activeLine,
 .sqlEditor .cm-activeLineGutter {
   background: #171d25;
+}
+
+.sqlEditor .cm-selectionBackground,
+.sqlEditor.cm-focused .cm-selectionBackground,
+.sqlEditor .cm-content ::selection {
+  background: #4a6b9c !important;
+}
+
+.sqlEditor .cm-cursor,
+.sqlEditor .cm-dropCursor {
+  border-left-color: #e8edf2 !important;
 }
 
 .sqlEditor .cm-content {
@@ -1143,7 +1168,8 @@ td {
 }
 
 .error,
-.loading {
+.loading,
+.toast {
   border-radius: 7px;
   padding: 9px 11px;
   margin-bottom: 10px;
@@ -1159,6 +1185,18 @@ td {
   border: 1px solid #3c5f9a;
   background: #1d2635;
   color: #bcd4ff;
+}
+
+.toast {
+  border: 1px solid #317d43;
+  background: #1e3626;
+  color: #85d996;
+  animation: slideIn 0.2s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 .settingsPanel {
