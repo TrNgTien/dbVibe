@@ -282,10 +282,13 @@ button:disabled {
 
 .sidebarTree {
   flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
 }
 
 .connectionItem {
+  display: flex;
+  align-items: center;
   padding-left: 2px;
 }
 
@@ -311,10 +314,6 @@ button:disabled {
 
 .connectionChevron:hover {
   background: #2c333d;
-}
-
-.connectionChildren {
-  margin-left: 12px;
 }
 
 .topbar p,
@@ -393,6 +392,7 @@ small {
 }
 
 .sidebarPanel {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
