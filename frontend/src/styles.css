@@ -236,52 +236,97 @@ button:disabled {
   overflow: hidden;
 }
 
-.brand {
+.sidebarHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  justify-content: space-between;
+  padding: 0 4px;
+  margin-bottom: 8px;
 }
 
-.brand strong,
-.brand span {
-  display: block;
+.sidebarTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.brand span,
+.sidebarTitle strong {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #95a0ad;
+}
+
+.sidebarActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.iconButton {
+  background: transparent;
+  border: 0;
+  color: #95a0ad;
+  padding: 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: #202835;
+  color: #e8edf2;
+}
+
+.sidebarTree {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+.connectionItem {
+  padding-left: 2px;
+}
+
+.connectionItem .connectionName {
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connectionItem .driverLogo {
+  width: 16px;
+  height: 16px;
+}
+
+.connectionChevron {
+  padding: 4px;
+  margin-right: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.connectionChevron:hover {
+  background: #2c333d;
+}
+
+.connectionChildren {
+  margin-left: 12px;
+}
+
 .topbar p,
 small {
   color: #95a0ad;
 }
 
-.connectionList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 160px;
-  overflow: auto;
-}
-
-.connection {
-  align-items: flex-start;
-  flex-direction: column;
-  text-align: left;
-  min-height: 58px;
-}
-
-.connectionName,
 .connectionStatus {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   min-width: 0;
-}
-
-.connectionName {
-  max-width: 100%;
-}
-
-.connectionStatus {
   color: #95a0ad;
   font-weight: 500;
 }
@@ -319,7 +364,6 @@ small {
   box-shadow: 0 0 0 2px rgb(255 107 107 / 0.18);
 }
 
-.connection.active,
 .tableItem.active {
   border-color: #4c8dff;
   background: #1f2d42;
@@ -790,14 +834,6 @@ textarea {
   color: #8f98a4;
 }
 
-.connectionItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
-  cursor: default;
-}
-
 .connectionSelect {
   flex: 1;
   min-width: 0;
@@ -816,11 +852,6 @@ textarea {
 
 .connectionSelect:hover {
   background: transparent;
-}
-
-.connectionChevron {
-  cursor: pointer;
-  flex: 0 0 auto;
 }
 
 .treeIndent {
