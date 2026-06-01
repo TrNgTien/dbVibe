@@ -269,8 +269,6 @@ function App() {
   const [connectionMenu, setConnectionMenu] = useState(null);
   const [creatingConnection, setCreatingConnection] = useState(false);
   const [editingConnection, setEditingConnection] = useState(false);
-  const [vimMode, setVimMode] = useLocalStorage("tnt-sql-vim", true);
-  const [commandMode, setCommandMode] = useState(false);
   const [shortcuts, setShortcuts] = useLocalStorage(
     "tnt-sql-shortcuts",
     defaultShortcuts,
@@ -801,8 +799,6 @@ function App() {
           <SettingsPanel
             shortcuts={shortcuts}
             setShortcuts={setShortcuts}
-            vimMode={vimMode}
-            setVimMode={setVimMode}
           />
         )}
 
@@ -842,13 +838,6 @@ function App() {
               <div className="panelHead">
                 <h2>Command</h2>
                 <div className="rowActions">
-                  <span className={vimMode ? "mode enabled" : "mode"}>
-                    {vimMode
-                      ? commandMode
-                        ? "VIM NORMAL"
-                        : "VIM INSERT"
-                      : "VIM OFF"}
-                  </span>
                   <button onClick={saveCurrentQuery}>
                     <Save size={15} /> Query
                   </button>
@@ -865,9 +854,6 @@ function App() {
                 onChange={setSqlText}
                 detail={detail}
                 editorRef={editorRef}
-                vimMode={vimMode}
-                commandMode={commandMode}
-                setCommandMode={setCommandMode}
               />
             </section>
           )}
@@ -1194,15 +1180,7 @@ function ConnectionStatus({ status, driver }) {
   );
 }
 
-function SqlEditor({
-  value,
-  onChange,
-  detail,
-  editorRef,
-  vimMode,
-  commandMode,
-  setCommandMode,
-}) {
+function SqlEditor({ value, onChange, detail, editorRef }) {
   const containerRef = useRef(null);
   const viewRef = useRef(null);
   const valueRef = useRef(value);
@@ -1246,27 +1224,6 @@ function SqlEditor({
             valueRef.current = next;
             onChangeRef.current(next);
           }),
-          EditorView.domEventHandlers({
-            focus() {
-              setCommandMode(false);
-            },
-            keydown(event, currentView) {
-              if (!vimMode) return false;
-              if (event.key === "Escape") {
-                setCommandMode(true);
-                currentView.contentDOM.blur();
-                event.preventDefault();
-                return true;
-              }
-              if (commandMode && event.key === "i") {
-                setCommandMode(false);
-                currentView.focus();
-                event.preventDefault();
-                return true;
-              }
-              return false;
-            },
-          }),
         ],
       }),
     });
@@ -1279,7 +1236,7 @@ function SqlEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, [commandMode, detail, editorRef, setCommandMode, vimMode]);
+  }, [detail, editorRef]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -1395,7 +1352,7 @@ function ConnectionForm({ draft, setDraft }) {
   );
 }
 
-function SettingsPanel({ shortcuts, setShortcuts, vimMode, setVimMode }) {
+function SettingsPanel({ shortcuts, setShortcuts }) {
   return (
     <section className="panel settingsPanel">
       <div className="panelHead">
@@ -1415,14 +1372,6 @@ function SettingsPanel({ shortcuts, setShortcuts, vimMode, setVimMode }) {
             />
           </label>
         ))}
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={vimMode}
-            onChange={(e) => setVimMode(e.target.checked)}
-          />{" "}
-          Vim mode
-        </label>
       </div>
     </section>
   );
