@@ -70,6 +70,7 @@ import {
   Activity,
   ChevronDown,
   ChevronRight,
+  ChevronsUp,
   Code2,
   Copy,
   Database,
@@ -382,70 +383,15 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [shortcuts, sqlText, selected]);
 
-  const filteredObjects = useMemo(() => {
-    const term = filter.trim().toLowerCase();
-    if (!detail?.tables) return [];
-    const objects = detail.tables.map((table) => ({
-      ...table,
-      objectType: normalizeObjectType(table.type),
-    }));
-    if (!term) return objects;
-    return objects.filter((table) =>
-      `${table.schema}.${table.name}.${table.objectType}`
-        .toLowerCase()
-        .includes(term),
-    );
-  }, [detail, filter]);
-
-  const filteredDatabases = useMemo(() => {
-    const databases = detail?.databases?.length
-      ? detail.databases
-      : selected?.database
-        ? [{ name: selected.database, size: 0 }]
-        : [];
-    return databases;
-  }, [detail, selected]);
-
-  const objectTables = useMemo(
-    () => filteredObjects.filter((table) => table.objectType === "table"),
-    [filteredObjects],
-  );
-
-  const objectViews = useMemo(
-    () => filteredObjects.filter((table) => table.objectType === "view"),
-    [filteredObjects],
-  );
-
-  const filteredRoutines = useMemo(() => {
-    const term = filter.trim().toLowerCase();
-    const routines = detail?.routines || [];
-    if (!term) return routines;
-    return routines.filter((routine) =>
-      `${routine.schema}.${routine.name}.${routine.type}`
-        .toLowerCase()
-        .includes(term),
-    );
-  }, [detail, filter]);
-
-  const objectFunctions = useMemo(
-    () => filteredRoutines.filter((routine) => routine.type === "function"),
-    [filteredRoutines],
-  );
-
-  const objectProcedures = useMemo(
-    () => filteredRoutines.filter((routine) => routine.type === "procedure"),
-    [filteredRoutines],
-  );
-
   const filteredConnections = useMemo(() => {
-    const term = connectionFilter.trim().toLowerCase();
+    const term = filter.trim().toLowerCase();
     if (!term) return connections;
     return connections.filter((conn) =>
       `${conn.name}.${conn.driver}.${conn.host}.${conn.port}.${conn.database}`
         .toLowerCase()
         .includes(term),
     );
-  }, [connectionFilter, connections]);
+  }, [filter, connections]);
 
   async function run(label, action) {
     setLoading(label);
@@ -606,23 +552,33 @@ function App() {
     }
   }
 
-  async function openTable(table) {
-    if (!selected?.id) return;
+  async function openTable(table, connId = selected?.id) {
+    if (!connId) return;
+    const detailForConn = details[connId];
+    const conn = connections.find((c) => c.id === connId);
+    const driver = detailForConn?.driver || conn?.driver;
     const next = await run("table detail", () =>
       api.call(
         "GetDatabaseTableDetail",
-        selected.id,
-        detail?.database || "",
+        connId,
+        detailForConn?.database || "",
         table.schema,
         table.name,
         100,
       ),
     );
-    setTableDetail(next);
-    setResult(next.sample);
-    setSqlText(
-      `select * from ${quoteName(detail?.driver, table.schema, table.name)} limit 100`,
-    );
+    const applyTableDetail = () => {
+      setTableDetail(next);
+      setResult(next.sample);
+      setSqlText(
+        `select * from ${quoteName(driver, table.schema, table.name)} limit 100`,
+      );
+    };
+    if (connId === selected?.id) {
+      applyTableDetail();
+    } else {
+      connect(conn).then(applyTableDetail);
+    }
   }
 
   async function execute() {
@@ -720,11 +676,6 @@ function App() {
     });
   }
 
-  function statusForConnection(conn) {
-    if (selected?.id === conn.id) return connectionStatus;
-    return connectedConnections[conn.id] ? "connected" : "disconnected";
-  }
-
   function toggleConnectionExpanded(conn, event) {
     if (event) {
       event.stopPropagation();
@@ -788,41 +739,23 @@ function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">
-          <Database size={22} />
-          <div>
-            <strong>dbVibe</strong>
-            <span>MySQL / PostgreSQL / Redis / Elasticsearch</span>
+        <div className="sidebarHeader">
+          <div className="sidebarTitle">
+            <strong>DATABASE</strong>
+          </div>
+          <div className="sidebarActions">
+            <button className="iconButton" onClick={refreshConnections} title="Refresh">
+              <RefreshCw size={15} />
+            </button>
+            <button className="iconButton" onClick={collapseAll} title="Collapse All">
+              <ChevronsUp size={15} />
+            </button>
+            <button className="iconButton" onClick={startNewConnection} title="New Connection">
+              <Plus size={15} />
+            </button>
           </div>
         </div>
-        <button
-          className="primary"
-          onClick={startNewConnection}
-        >
-          <Plus size={16} /> New connection
-        </button>
-        <div className="connectionList">
-          {connections.map((conn) => (
-            <button
-              key={conn.id}
-              className={
-                selected?.id === conn.id ? "connection active" : "connection"
-              }
-              onClick={() => selectConnection(conn)}
-              onContextMenu={(event) => openConnectionMenu(event, conn)}
-            >
-              <span className="connectionName">
-                <StatusDot status={statusForConnection(conn)} />
-                <DriverLogo driver={conn.driver} />
-                {conn.name}
-              </span>
-              <small>
-                {driverLabel(conn.driver)} · {conn.host}:{conn.port}
-                {conn.database ? `/${conn.database}` : ""}
-              </small>
-            </button>
-          ))}
-        </div>
+
         <section className="panel sidebarPanel">
           <label className="search sidebarSearch">
             <Search size={15} />
@@ -832,19 +765,20 @@ function App() {
               placeholder="Filter objects"
             />
           </label>
-          <ConnectionTree
-            detail={detail}
-            databases={filteredDatabases}
-            tables={objectTables}
-            views={objectViews}
-            functions={objectFunctions}
-            procedures={objectProcedures}
-            tableDetail={tableDetail}
-            expanded={expandedObjects}
-            onToggle={toggleObject}
+          <SidebarTree
+            connections={filteredConnections}
+            details={details}
+            expandedConnections={expandedConnections}
+            expandedObjects={expandedObjects}
+            connectedConnections={connectedConnections}
+            selected={selected}
+            onSelectConnection={selectConnection}
+            onToggleConnection={toggleConnectionExpanded}
+            onToggleObject={toggleObject}
             onOpenDatabase={connectDatabase}
             onOpenTable={openTable}
             onNewQuery={() => editorRef.current?.focus()}
+            onContextMenu={openConnectionMenu}
           />
           <SavedQueries
             queries={queries}
@@ -1085,188 +1019,308 @@ function ConnectionContextMenu({
   );
 }
 
-function ConnectionTree({
-  detail,
+function SidebarTree({
+  connections,
+  details,
+  expandedConnections,
+  expandedObjects,
+  connectedConnections,
+  selected,
+  onSelectConnection,
+  onToggleConnection,
+  onToggleObject,
+  onOpenDatabase,
+  onOpenTable,
+  onNewQuery,
+  onContextMenu,
+}) {
+  return (
+    <div className="objectTree sidebarTree">
+      {connections.map((conn) => {
+        const isExpanded = expandedConnections[conn.id];
+        const detail = details[conn.id];
+        const isConnected = connectedConnections[conn.id];
+
+        const rawDatabases = detail?.databases?.length
+          ? detail.databases
+          : detail?.database
+            ? [{ name: detail.database, size: 0 }]
+            : [];
+        const allObjects = (detail?.tables || []).map((table) => ({
+          ...table,
+          objectType: normalizeObjectType(table.type),
+        }));
+        const tables = allObjects.filter((table) => table.objectType === "table");
+        const views =
+          detail?.views ||
+          allObjects.filter((table) => table.objectType === "view");
+        const routines = detail?.routines || [];
+        const functions =
+          detail?.functions ||
+          routines.filter((routine) => routine.type === "function");
+        const procedures = routines.filter(
+          (routine) => routine.type === "procedure",
+        );
+
+        return (
+          <div key={conn.id} className="treeBranch">
+            <button
+              className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
+              onClick={() => onSelectConnection(conn)}
+              onContextMenu={(event) => onContextMenu(event, conn)}
+            >
+              <div
+                className="treeChevron connectionChevron"
+                onClick={(e) => onToggleConnection(conn, e)}
+              >
+                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </div>
+              <span className="connectionName">
+                <StatusDot status={isConnected ? "connected" : "disconnected"} />
+                <DriverLogo driver={conn.driver} />
+                {conn.name}
+              </span>
+              <small>{driverLabel(conn.driver)}</small>
+            </button>
+
+            {isExpanded && (
+              <div className="treeChildren connectionChildren">
+                {(!detail || !isConnected) && (
+                  <div className="treeEmpty">Loading...</div>
+                )}
+                {detail && isConnected && (
+                  <ConnectionTreeInner
+                    connId={conn.id}
+                    driver={conn.driver}
+                    databases={rawDatabases}
+                    tables={tables}
+                    views={views}
+                    functions={functions}
+                    procedures={procedures}
+                    expanded={expandedObjects}
+                    onToggle={(key) => onToggleObject(conn.id, key)}
+                    onOpenDatabase={(db) => onOpenDatabase(db, conn.id)}
+                    onOpenTable={(table) => onOpenTable(table, conn.id)}
+                    onNewQuery={onNewQuery}
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConnectionTreeInner({
+  connId,
+  driver,
   databases,
   tables,
   views,
   functions,
   procedures,
-  tableDetail,
   expanded,
   onToggle,
   onOpenDatabase,
   onOpenTable,
   onNewQuery,
 }) {
-  const activeDatabase = detail?.database || "";
-  const tableCount = tables.length;
-  const viewCount = views.length;
-  const functionCount = functions.length;
-  const procedureCount = procedures.length;
+  const isRedis = driver === "redis";
+  const isElasticsearch = driver === "elasticsearch";
+
+  if (isRedis || isElasticsearch) {
+    return (
+      <button className="treeItem" onClick={onNewQuery}>
+        <div className="treeIndent" />
+        <Code2 size={14} />
+        <span>Query workspace</span>
+      </button>
+    );
+  }
 
   return (
-    <div className="objectTree">
-      {databases.map((database) => (
-        <DatabaseBranch
-          key={database.name}
-          database={database}
-          active={database.name === activeDatabase}
-          expanded={!!expanded[databaseKey(database.name)]}
-          onToggle={onToggle}
-          onOpen={onOpenDatabase}
-        >
-          <button className="treeItem leaf queryLeaf" onClick={onNewQuery}>
-            <span className="treeIndent" />
-            <FileText size={15} />
-            <span>Query</span>
+    <>
+      <button className="treeItem" onClick={onNewQuery}>
+        <div className="treeIndent" />
+        <Code2 size={14} />
+        <span>Query workspace</span>
+      </button>
+
+      {databases.length > 1 && (
+        <div className="treeBranch">
+          <button className="treeItem" onClick={() => onToggle("databases")}>
+            <div className="treeChevron">
+              {expanded[`${connId}_databases`] ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+            </div>
+            <Database size={14} />
+            <span>Databases</span>
+            <small>{databases.length}</small>
           </button>
+          {expanded[`${connId}_databases`] && (
+            <div className="treeChildren">
+              {databases.map((db) => {
+                const name = typeof db === "string" ? db : db.name;
+                return (
+                  <button
+                    key={name}
+                    className="treeItem"
+                    onClick={() => onOpenDatabase(name)}
+                  >
+                    <div className="treeIndent" />
+                    <Database size={14} />
+                    <span>{name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-          <TreeBranch
-            id="tables"
-            icon={<Table2 size={16} />}
-            label="Tables"
-            meta={String(tableCount)}
-            expanded={expanded.tables}
-            onToggle={onToggle}
-          >
-            {tables.map((table) => (
-              <ObjectLeaf
-                key={`${table.schema}.${table.name}`}
-                table={table}
-                active={
-                  tableDetail?.table?.schema === table.schema &&
-                  tableDetail?.table?.name === table.name
-                }
-                onOpen={onOpenTable}
-              />
-            ))}
-            {!tables.length && <div className="treeEmpty">No tables</div>}
-          </TreeBranch>
-
-          <TreeBranch
-            id="views"
-            icon={<View size={16} />}
-            label="Views"
-            meta={viewCount ? String(viewCount) : ""}
-            expanded={expanded.views}
-            onToggle={onToggle}
-          >
-            {views.map((table) => (
-              <ObjectLeaf
-                key={`${table.schema}.${table.name}`}
-                table={table}
-                active={
-                  tableDetail?.table?.schema === table.schema &&
-                  tableDetail?.table?.name === table.name
-                }
-                onOpen={onOpenTable}
-              />
-            ))}
-            {!views.length && <div className="treeEmpty">No views</div>}
-          </TreeBranch>
-
-          <TreeBranch
-            id="functions"
-            icon={<Code2 size={16} />}
-            label="Functions"
-            meta={functionCount ? String(functionCount) : ""}
-            expanded={expanded.functions}
-            onToggle={onToggle}
-          >
-            {functions.map((routine) => (
-              <RoutineLeaf
-                key={`${routine.schema}.${routine.name}`}
-                routine={routine}
-              />
-            ))}
-            {!functions.length && <div className="treeEmpty">No functions</div>}
-          </TreeBranch>
-
-          <TreeBranch
-            id="procedures"
-            icon={<Code2 size={16} />}
-            label="Procedures"
-            meta={procedureCount ? String(procedureCount) : ""}
-            expanded={expanded.procedures}
-            onToggle={onToggle}
-          >
-            {procedures.map((routine) => (
-              <RoutineLeaf
-                key={`${routine.schema}.${routine.name}`}
-                routine={routine}
-              />
-            ))}
-            {!procedures.length && (
-              <div className="treeEmpty">No procedures</div>
+      <div className="treeBranch">
+        <button className="treeItem" onClick={() => onToggle("tables")}>
+          <div className="treeChevron">
+            {expanded[`${connId}_tables`] ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
             )}
-          </TreeBranch>
-        </DatabaseBranch>
-      ))}
-      {!databases.length && <div className="treeEmpty">No databases</div>}
-    </div>
-  );
-}
+          </div>
+          <Table2 size={14} />
+          <span>Tables</span>
+          <small>{tables.length}</small>
+        </button>
+        {expanded[`${connId}_tables`] && (
+          <div className="treeChildren">
+            {tables.length === 0 && (
+              <div className="treeEmpty">No tables found</div>
+            )}
+            {tables.map((table) => (
+              <button
+                key={`${table.schema}.${table.name}`}
+                className="treeItem"
+                onClick={() => onOpenTable(table)}
+              >
+                <div className="treeIndent" />
+                <Table2 size={14} />
+                <span>{table.name}</span>
+                {table.schema && <small>{table.schema}</small>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-function TreeBranch({ id, icon, label, meta, expanded, onToggle, children }) {
-  const Chevron = expanded ? ChevronDown : ChevronRight;
-  return (
-    <div className="treeBranch">
-      <button className="treeItem" onClick={() => onToggle(id)}>
-        <Chevron size={15} className="treeChevron" />
-        {icon}
-        <span>{label}</span>
-        {meta && <small>{meta}</small>}
-      </button>
-      {expanded && <div className="treeChildren">{children}</div>}
-    </div>
-  );
-}
+      <div className="treeBranch">
+        <button className="treeItem" onClick={() => onToggle("views")}>
+          <div className="treeChevron">
+            {expanded[`${connId}_views`] ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </div>
+          <View size={14} />
+          <span>Views</span>
+          <small>{views.length}</small>
+        </button>
+        {expanded[`${connId}_views`] && (
+          <div className="treeChildren">
+            {views.length === 0 && (
+              <div className="treeEmpty">No views found</div>
+            )}
+            {views.map((view) => (
+              <button
+                key={`${view.schema}.${view.name}`}
+                className="treeItem"
+                onClick={() => onOpenTable(view)}
+              >
+                <div className="treeIndent" />
+                <View size={14} />
+                <span>{view.name}</span>
+                {view.schema && <small>{view.schema}</small>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-function DatabaseBranch({ database, active, expanded, onToggle, onOpen, children }) {
-  const Chevron = expanded ? ChevronDown : ChevronRight;
-  const id = databaseKey(database.name);
-  return (
-    <div className="treeBranch">
-      <button
-        className={active ? "treeItem active" : "treeItem"}
-        onClick={() => {
-          if (!active) onOpen(database.name);
-          onToggle(id);
-        }}
-      >
-        <Chevron size={15} className="treeChevron" />
-        <Database size={16} />
-        <span>{database.name}</span>
-        <small>{formatBytes(database.size)}</small>
-      </button>
-      {active && expanded && <div className="treeChildren">{children}</div>}
-    </div>
-  );
-}
+      {(driver === "postgres" || driver === "mysql") && (
+        <>
+          <div className="treeBranch">
+            <button className="treeItem" onClick={() => onToggle("functions")}>
+              <div className="treeChevron">
+                {expanded[`${connId}_functions`] ? (
+                  <ChevronDown size={14} />
+                ) : (
+                  <ChevronRight size={14} />
+                )}
+              </div>
+              <Activity size={14} />
+              <span>Functions</span>
+              <small>{functions.length}</small>
+            </button>
+            {expanded[`${connId}_functions`] && (
+              <div className="treeChildren">
+                {functions.length === 0 && (
+                  <div className="treeEmpty">No functions found</div>
+                )}
+                {functions.map((func) => (
+                  <button
+                    key={`${func.schema}.${func.name}`}
+                    className="treeItem"
+                  >
+                    <div className="treeIndent" />
+                    <Activity size={14} />
+                    <span>{func.name}</span>
+                    {func.schema && <small>{func.schema}</small>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-function ObjectLeaf({ table, active, onOpen }) {
-  return (
-    <button
-      className={active ? "treeItem leaf active" : "treeItem leaf"}
-      onClick={() => onOpen(table)}
-    >
-      <span className="treeIndent" />
-      <Table2 size={15} />
-      <span>{table.name}</span>
-      <small>{formatCompactCount(table.rows)}</small>
-    </button>
-  );
-}
-
-function RoutineLeaf({ routine }) {
-  return (
-    <button className="treeItem leaf" disabled>
-      <span className="treeIndent" />
-      <Code2 size={15} />
-      <span>{routine.name}</span>
-      <small>{routine.schema}</small>
-    </button>
+          <div className="treeBranch">
+            <button className="treeItem" onClick={() => onToggle("procedures")}>
+              <div className="treeChevron">
+                {expanded[`${connId}_procedures`] ? (
+                  <ChevronDown size={14} />
+                ) : (
+                  <ChevronRight size={14} />
+                )}
+              </div>
+              <Activity size={14} />
+              <span>Procedures</span>
+              <small>{procedures.length}</small>
+            </button>
+            {expanded[`${connId}_procedures`] && (
+              <div className="treeChildren">
+                {procedures.length === 0 && (
+                  <div className="treeEmpty">No procedures found</div>
+                )}
+                {procedures.map((proc) => (
+                  <button
+                    key={`${proc.schema}.${proc.name}`}
+                    className="treeItem"
+                  >
+                    <div className="treeIndent" />
+                    <Activity size={14} />
+                    <span>{proc.name}</span>
+                    {proc.schema && <small>{proc.schema}</small>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
