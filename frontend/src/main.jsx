@@ -55,8 +55,6 @@ const elasticsearchMode = {
 
 const redisLanguage = StreamLanguage.define(redisMode);
 const elasticsearchLanguage = StreamLanguage.define(elasticsearchMode);
-import { json } from "@codemirror/lang-json";
-import { StreamLanguage } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { EditorState } from "@codemirror/state";
 import {
@@ -310,7 +308,8 @@ function App() {
   const [connections, setConnections] = useState([]);
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(defaultConnection);
-  const [detail, setDetail] = useState(null);
+  const [detail, setDetail] = useState(null); // Keep for the currently active/selected connection (query workspace)
+  const [details, setDetails] = useState({}); // details: { [connId]: detailData }
   const [tableDetail, setTableDetail] = useState(null);
   const [queries, setQueries] = useState([]);
   const [sqlText, setSqlText] = useState("select * from ");
@@ -340,13 +339,8 @@ function App() {
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceView, setWorkspaceView] = useState("query");
-  const [expandedObjects, setExpandedObjects] = useState({
-    database: true,
-    tables: true,
-    views: false,
-    functions: false,
-    procedures: false,
-  });
+  const [expandedConnections, setExpandedConnections] = useState({}); // { [connId]: boolean }
+  const [expandedObjects, setExpandedObjects] = useState({}); // { [connId_databaseKey]: boolean }
   const editorRef = useRef(null);
 
   useEffect(() => {
@@ -555,12 +549,17 @@ function App() {
       const next = await run("connect", () => api.call("Connect", conn.id));
       const savedQueries = await api.call("ListSavedQueries", conn.id);
       setDetail(next);
+      setDetails((current) => ({ ...current, [conn.id]: next }));
       setQueries(savedQueries || []);
       setDraft((current) => ({ ...current, ...conn, database: next.database }));
       setTableDetail(null);
       setExpandedObjects((current) => ({
         ...current,
-        [databaseKey(next.database)]: true,
+        [`${conn.id}_${databaseKey(next.database)}`]: true,
+      }));
+      setExpandedConnections((current) => ({
+        ...current,
+        [conn.id]: true,
       }));
       setConnectedConnections((current) => ({
         ...current,
@@ -573,29 +572,36 @@ function App() {
     }
   }
 
-  async function connectDatabase(databaseName) {
-    if (!selected?.id || !databaseName) return;
-    setConnectionStatus("connecting");
+  async function connectDatabase(databaseName, connId = selected?.id) {
+    if (!connId || !databaseName) return;
+    if (connId === selected?.id) {
+      setConnectionStatus("connecting");
+    }
     try {
       const next = await run("connect", () =>
-        api.call("ConnectDatabase", selected.id, databaseName),
+        api.call("ConnectDatabase", connId, databaseName),
       );
-      setDetail(next);
-      setDraft((current) => ({ ...current, database: next.database }));
-      setTableDetail(null);
-      setResult(null);
-      setExplain(null);
+      setDetails((current) => ({ ...current, [connId]: next }));
+      if (connId === selected?.id) {
+        setDetail(next);
+        setDraft((current) => ({ ...current, database: next.database }));
+        setTableDetail(null);
+        setResult(null);
+        setExplain(null);
+        setConnectionStatus("connected");
+      }
       setExpandedObjects((current) => ({
         ...current,
-        [databaseKey(databaseName)]: true,
+        [`${connId}_${databaseKey(databaseName)}`]: true,
       }));
       setConnectedConnections((current) => ({
         ...current,
-        [selected.id]: true,
+        [connId]: true,
       }));
-      setConnectionStatus("connected");
     } catch (err) {
-      setConnectionStatus("error");
+      if (connId === selected?.id) {
+        setConnectionStatus("error");
+      }
       throw err;
     }
   }
@@ -698,11 +704,35 @@ function App() {
     return connectedConnections[conn.id] ? "connected" : "disconnected";
   }
 
-  function toggleObject(key) {
+  function toggleConnectionExpanded(conn, event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    setExpandedConnections((current) => {
+      const isExpanded = current[conn.id];
+      if (!isExpanded && !details[conn.id] && !connectedConnections[conn.id]) {
+        api.call("Connect", conn.id).then(next => {
+          setDetails(prev => ({ ...prev, [conn.id]: next }));
+          setConnectedConnections(prev => ({ ...prev, [conn.id]: true }));
+        }).catch(err => console.error("Failed to connect on expand", err));
+      }
+      return {
+        ...current,
+        [conn.id]: !isExpanded,
+      };
+    });
+  }
+
+  function toggleObject(connId, key) {
     setExpandedObjects((current) => ({
       ...current,
-      [key]: !current[key],
+      [`${connId}_${key}`]: !current[`${connId}_${key}`],
     }));
+  }
+
+  function collapseAll() {
+    setExpandedConnections({});
+    setExpandedObjects({});
   }
 
   const editingNewConnection = creatingConnection && !selected;
@@ -930,7 +960,7 @@ function App() {
         </section>
         )}
 
-        {!editingConnectionDetails && workspaceView === "query" && (
+        {!editingConnectionDetails && workspaceView === "query" && (tableDetail || result || explain) && (
           <section className="workspace">
             <section className="content">
               {tableDetail && <TableInspector detail={tableDetail} />}
@@ -1744,9 +1774,9 @@ function TraceEventModal({ event, onClose }) {
 }
 
 function RowDetailModal({ title, row, isExplain, onClose }) {
-  const entries = Object.entries(row || {});
-  const fullText = entries.map(([key, value]) => `${key}\n${value}`).join("\n\n");
-  const planNodes = isExplain ? parseExplainPlan(fullText) : [];
+  const jsonText = JSON.stringify(row || {}, null, 2);
+  const explainText = Object.entries(row || {}).map(([key, value]) => `${key}\n${value}`).join("\n\n");
+  const planNodes = isExplain ? parseExplainPlan(explainText) : [];
 
   return (
     <div className="modalBackdrop" onMouseDown={onClose}>
@@ -1782,7 +1812,7 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
 
         <div className="rowDetail">
           <h3>Full Row</h3>
-          <pre>{fullText}</pre>
+          <pre>{jsonText}</pre>
         </div>
       </section>
     </div>
