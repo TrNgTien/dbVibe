@@ -8,7 +8,7 @@ Minimal macOS SQL client built with Wails, Go, and React. It focuses on fast dat
 - PostgreSQL and MySQL connection forms with SSL/TLS options
 - Execute SQL commands
 - Save and reopen query snippets per connection
-- Vim-style editor toggle with normal/insert mode
+- CodeMirror SQL editor with autocomplete
 - Customizable shortcuts stored in local storage
 - Table browser with row preview
 - First-glance table diagnostics: columns, indexes, create table SQL, sample rows
