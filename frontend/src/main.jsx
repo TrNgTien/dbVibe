@@ -141,6 +141,12 @@ async function demoCall(name, ...args) {
         { schema: "public", name: "refresh_billing_sessions", type: "function" },
       ],
     };
+  if (name === "GetCompletions") {
+    return [
+      { label: "SET", detail: "command", type: "keyword", apply: "SET " },
+      { label: "GET", detail: "command", type: "keyword", apply: "GET " }
+    ];
+  }
   if (name === "ListSavedQueries")
     return [
       {
@@ -1214,7 +1220,11 @@ function SqlEditor({ value, onChange, detail, editorRef }) {
           sql({ dialect }),
           autocompletion({
             activateOnTyping: true,
-            override: [createSqlCompletionSource(detail)],
+            override: [
+              detail?.driver === "redis" || detail?.driver === "elasticsearch"
+                ? createBackendCompletionSource(detail)
+                : createSqlCompletionSource(detail)
+            ],
           }),
           keymap.of([
             ...completionKeymap,
@@ -1895,6 +1905,37 @@ function eventCombo(event) {
         : event.key;
   parts.push(key);
   return parts.join("+");
+}
+
+function createBackendCompletionSource(detail) {
+  return async (context) => {
+    const word = context.matchBefore(/[\w_$-]*/);
+    if (!context.explicit && !word) return null;
+
+    const pos = context.pos;
+    const text = context.state.sliceDoc(0, pos);
+    
+    let items;
+    try {
+      items = await api.call("GetCompletions", detail?.id || "", detail?.database || "", text, pos);
+    } catch (err) {
+      console.error("Autocomplete error:", err);
+      return null;
+    }
+    
+    if (!items || !items.length) return null;
+
+    return {
+      from: word ? word.from : context.pos,
+      options: items.map((item) => ({
+        label: item.label,
+        detail: item.detail,
+        type: item.type,
+        apply: item.apply,
+      })),
+      validFor: /^[\w_$-]*$/,
+    };
+  };
 }
 
 function createSqlCompletionSource(detail) {
