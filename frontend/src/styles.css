@@ -398,30 +398,6 @@ small {
   flex-direction: column;
 }
 
-.sidebarPanelHead {
-  width: 100%;
-  min-height: 44px;
-  border: 0;
-  border-bottom: 1px solid #2c333d;
-  border-radius: 0;
-  background: transparent;
-  justify-content: flex-start;
-  font-size: 16px;
-  font-weight: 700;
-  padding: 10px 12px;
-}
-
-.sidebarPanelHead:hover {
-  background: #20252d;
-}
-
-.sidebarPanelHead span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .main {
   padding: 18px;
   overflow: hidden;
@@ -564,6 +540,30 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: #4c8dff;
+}
+
+.passwordInput {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordInput input {
+  padding-right: 36px;
+}
+
+.passwordInput .iconButton {
+  position: absolute;
+  right: 4px;
+  background: transparent;
+  border: 0;
+  padding: 4px;
+  color: #6f7a86;
+}
+
+.passwordInput .iconButton:hover {
+  background: transparent;
+  color: #e8edf2;
 }
 
 .checkbox {
@@ -936,6 +936,27 @@ pre {
   flex: 1;
   display: flex;
   flex-direction: column;
+}
+
+.ttlDisplay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  margin-right: 12px;
+  border-right: 1px solid #2c333d;
+}
+
+.ttlDisplay span {
+  font-size: 12px;
+  color: #aab3be !important;
+}
+
+.ttlDisplay select {
+  padding: 4px 8px;
+  width: auto;
+  font-size: 12px;
+  min-height: 26px;
 }
 
 .resultPanel .panelHead span {

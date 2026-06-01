@@ -88,6 +88,10 @@ import {
   X,
   Pencil,
   PowerOff,
+  Eye,
+  EyeOff,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import "./styles.css";
 
@@ -424,9 +428,21 @@ function App() {
     setEditingConnection(false);
     setDraft({ ...defaultConnection, ...saved });
     setConnectionStatus("disconnected");
+    const connId = saved.id || draft.id;
+    setDetail(null);
     setConnectedConnections((current) => {
       const next = { ...current };
-      delete next[saved.id];
+      delete next[connId];
+      return next;
+    });
+    setDetails((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
+    setExpandedConnections((current) => {
+      const next = { ...current };
+      delete next[connId];
       return next;
     });
   }
@@ -448,6 +464,16 @@ function App() {
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus("disconnected");
+  }
+
+  async function togglePin(conn) {
+    const next = { ...conn, isPinned: !conn.isPinned };
+    await run("save connection", () => api.call("SaveConnection", next));
+    await refreshConnections();
+    if (selected?.id === conn.id) {
+      setSelected(next);
+      setDraft((current) => ({ ...current, isPinned: next.isPinned }));
+    }
   }
 
   async function deleteConnection() {
@@ -756,6 +782,7 @@ function App() {
         setFilter={setConnectionFilter}
         onSelect={selectConnection}
         onCreate={startNewConnection}
+        onTogglePin={togglePin}
       />
     );
   }
@@ -786,7 +813,7 @@ function App() {
             <input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter objects"
+              placeholder="Filter connections"
             />
           </label>
           <SidebarTree
@@ -944,7 +971,17 @@ function App() {
           <section className="workspace">
             <section className="content">
               {tableDetail && <TableInspector detail={tableDetail} />}
-              <ResultPanel title="Rows" result={result} />
+              <ResultPanel
+                title="Rows"
+                result={result}
+                onUpdateTTL={async (seconds) => {
+                  const cmd = seconds === -1 ? `PERSIST "${result.redisKey}"` : `EXPIRE "${result.redisKey}" ${seconds}`;
+                  await run("update TTL", () =>
+                    api.call("ExecuteDatabase", selected?.id, detail?.database || "", cmd, 500)
+                  );
+                  execute();
+                }}
+              />
               <ResultPanel title="Explain Analyze" result={explain} />
             </section>
           </section>
@@ -1130,6 +1167,7 @@ function SidebarTree({
                   <ConnectionTreeInner
                     connId={conn.id}
                     driver={conn.driver}
+                    activeDatabase={detail.database}
                     databases={rawDatabases}
                     tables={tables}
                     views={views}
@@ -1154,6 +1192,7 @@ function SidebarTree({
 function ConnectionTreeInner({
   connId,
   driver,
+  activeDatabase,
   databases,
   tables,
   views,
@@ -1207,7 +1246,7 @@ function ConnectionTreeInner({
                 return (
                   <button
                     key={name}
-                    className="treeItem"
+                    className={`treeItem ${activeDatabase === name ? "active" : ""}`}
                     onClick={() => onOpenDatabase(name)}
                   >
                     <div className="treeIndent" />
@@ -1478,6 +1517,7 @@ function SqlEditor({ value, onChange, detail, editorRef }) {
 }
 
 function ConnectionForm({ draft, setDraft }) {
+  const [showPassword, setShowPassword] = useState(false);
   const connectionInputProps = {
     autoCapitalize: "none",
     autoCorrect: "off",
@@ -1555,12 +1595,22 @@ function ConnectionForm({ draft, setDraft }) {
       </label>
       <label>
         Password
-        <input
-          {...connectionInputProps}
-          type="password"
-          value={draft.password || ""}
-          onChange={(e) => patch({ password: e.target.value })}
-        />
+        <div className="passwordInput">
+          <input
+            {...connectionInputProps}
+            type={showPassword ? "text" : "password"}
+            value={draft.password || ""}
+            onChange={(e) => patch({ password: e.target.value })}
+          />
+          <button
+            type="button"
+            className="iconButton"
+            onClick={() => setShowPassword(!showPassword)}
+            title={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
       </label>
       {draft.driver === "postgres" ? (
         <label>
@@ -1668,7 +1718,7 @@ function TableInspector({ detail }) {
   );
 }
 
-function ResultPanel({ title, result }) {
+function ResultPanel({ title, result, onUpdateTTL }) {
   const [selectedRow, setSelectedRow] = useState(null);
   if (!result) return null;
   const isExplain = title.toLowerCase().includes("explain");
@@ -1677,10 +1727,32 @@ function ResultPanel({ title, result }) {
     <section className="panel resultPanel">
       <div className="panelHead">
         <h2>{title}</h2>
-        <span>
-          {result.durationMs ?? 0}ms{" "}
-          {result.message ? `· ${result.message}` : ""}
-        </span>
+        <div className="rowActions">
+          {result.redisKey && (
+            <div className="ttlDisplay">
+              <span>
+                {result.redisTTL === -1 ? "TTL: persistent forever" : `TTL: ${result.redisTTL}s`}
+              </span>
+              <select onChange={(e) => {
+                if (e.target.value) {
+                  onUpdateTTL(Number(e.target.value));
+                  e.target.value = "";
+                }
+              }} value="">
+                <option value="" disabled>Update interval...</option>
+                <option value="-1">Persistent (Remove TTL)</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+                <option value="3600">1 hour</option>
+                <option value="86400">1 day</option>
+              </select>
+            </div>
+          )}
+          <span>
+            {result.durationMs ?? 0}ms{" "}
+            {result.message ? `· ${result.message}` : ""}
+          </span>
+        </div>
       </div>
       {result.columns?.length ? (
         <div className="resultScroll">
