@@ -111,6 +111,29 @@ func (a *App) GetTableDetail(connectionID, schema, table string, limit int) (dat
 	return a.GetDatabaseTableDetail(connectionID, "", schema, table, limit)
 }
 
+func (a *App) GetCompletions(connectionID, databaseName, text string, position int) ([]database.CompletionItem, error) {
+	conn, err := a.store.GetConnection(connectionID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(databaseName) != "" {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
+	defer cancel()
+
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+		return database.GetCompletions(ctx, nil, conn, text, position)
+	}
+	
+	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return nil, err
+	}
+	return database.GetCompletions(ctx, db, conn, text, position)
+}
+
 func (a *App) GetDatabaseTableDetail(connectionID, databaseName, schema, table string, limit int) (database.TableDetail, error) {
 	conn, db, err := a.openStored(connectionID)
 	if err != nil {
