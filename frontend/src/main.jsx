@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MySQLIcon, PostgreSQLIcon, RedisIcon, ElasticsearchIcon } from "./icons";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import {
   defaultKeymap,
@@ -285,7 +286,6 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceView, setWorkspaceView] = useState("query");
   const [expandedObjects, setExpandedObjects] = useState({
-    connection: true,
     database: true,
     tables: true,
     views: false,
@@ -505,7 +505,6 @@ function App() {
       setTableDetail(null);
       setExpandedObjects((current) => ({
         ...current,
-        connection: true,
         [databaseKey(next.database)]: true,
       }));
       setConnectedConnections((current) => ({
@@ -533,7 +532,6 @@ function App() {
       setExplain(null);
       setExpandedObjects((current) => ({
         ...current,
-        connection: true,
         [databaseKey(databaseName)]: true,
       }));
       setConnectedConnections((current) => ({
@@ -724,7 +722,6 @@ function App() {
             />
           </label>
           <ConnectionTree
-            selected={selected}
             detail={detail}
             databases={filteredDatabases}
             tables={objectTables}
@@ -732,7 +729,6 @@ function App() {
             functions={objectFunctions}
             procedures={objectProcedures}
             tableDetail={tableDetail}
-            connectionStatus={connectionStatus}
             expanded={expandedObjects}
             onToggle={toggleObject}
             onOpenDatabase={connectDatabase}
@@ -979,7 +975,6 @@ function ConnectionContextMenu({
 }
 
 function ConnectionTree({
-  selected,
   detail,
   databases,
   tables,
@@ -987,16 +982,12 @@ function ConnectionTree({
   functions,
   procedures,
   tableDetail,
-  connectionStatus,
   expanded,
   onToggle,
   onOpenDatabase,
   onOpenTable,
   onNewQuery,
 }) {
-  const connectionLabel = selected
-    ? `${selected.host}:${selected.port}`
-    : "No connection";
   const activeDatabase = detail?.database || "";
   const tableCount = tables.length;
   const viewCount = views.length;
@@ -1005,112 +996,103 @@ function ConnectionTree({
 
   return (
     <div className="objectTree">
-      <TreeBranch
-        id="connection"
-        icon={<DriverLogo driver={selected?.driver} />}
-        label={connectionLabel}
-        meta={<ConnectionStatus status={connectionStatus} driver={selected?.driver} />}
-        expanded={expanded.connection}
-        onToggle={onToggle}
-      >
-        {databases.map((database) => (
-          <DatabaseBranch
-            key={database.name}
-            database={database}
-            active={database.name === activeDatabase}
-            expanded={!!expanded[databaseKey(database.name)]}
+      {databases.map((database) => (
+        <DatabaseBranch
+          key={database.name}
+          database={database}
+          active={database.name === activeDatabase}
+          expanded={!!expanded[databaseKey(database.name)]}
+          onToggle={onToggle}
+          onOpen={onOpenDatabase}
+        >
+          <button className="treeItem leaf queryLeaf" onClick={onNewQuery}>
+            <span className="treeIndent" />
+            <FileText size={15} />
+            <span>Query</span>
+          </button>
+
+          <TreeBranch
+            id="tables"
+            icon={<Table2 size={16} />}
+            label="Tables"
+            meta={String(tableCount)}
+            expanded={expanded.tables}
             onToggle={onToggle}
-            onOpen={onOpenDatabase}
           >
-            <button className="treeItem leaf queryLeaf" onClick={onNewQuery}>
-              <span className="treeIndent" />
-              <FileText size={15} />
-              <span>Query</span>
-            </button>
+            {tables.map((table) => (
+              <ObjectLeaf
+                key={`${table.schema}.${table.name}`}
+                table={table}
+                active={
+                  tableDetail?.table?.schema === table.schema &&
+                  tableDetail?.table?.name === table.name
+                }
+                onOpen={onOpenTable}
+              />
+            ))}
+            {!tables.length && <div className="treeEmpty">No tables</div>}
+          </TreeBranch>
 
-            <TreeBranch
-              id="tables"
-              icon={<Table2 size={16} />}
-              label="Tables"
-              meta={String(tableCount)}
-              expanded={expanded.tables}
-              onToggle={onToggle}
-            >
-              {tables.map((table) => (
-                <ObjectLeaf
-                  key={`${table.schema}.${table.name}`}
-                  table={table}
-                  active={
-                    tableDetail?.table?.schema === table.schema &&
-                    tableDetail?.table?.name === table.name
-                  }
-                  onOpen={onOpenTable}
-                />
-              ))}
-              {!tables.length && <div className="treeEmpty">No tables</div>}
-            </TreeBranch>
+          <TreeBranch
+            id="views"
+            icon={<View size={16} />}
+            label="Views"
+            meta={viewCount ? String(viewCount) : ""}
+            expanded={expanded.views}
+            onToggle={onToggle}
+          >
+            {views.map((table) => (
+              <ObjectLeaf
+                key={`${table.schema}.${table.name}`}
+                table={table}
+                active={
+                  tableDetail?.table?.schema === table.schema &&
+                  tableDetail?.table?.name === table.name
+                }
+                onOpen={onOpenTable}
+              />
+            ))}
+            {!views.length && <div className="treeEmpty">No views</div>}
+          </TreeBranch>
 
-            <TreeBranch
-              id="views"
-              icon={<View size={16} />}
-              label="Views"
-              meta={viewCount ? String(viewCount) : ""}
-              expanded={expanded.views}
-              onToggle={onToggle}
-            >
-              {views.map((table) => (
-                <ObjectLeaf
-                  key={`${table.schema}.${table.name}`}
-                  table={table}
-                  active={
-                    tableDetail?.table?.schema === table.schema &&
-                    tableDetail?.table?.name === table.name
-                  }
-                  onOpen={onOpenTable}
-                />
-              ))}
-              {!views.length && <div className="treeEmpty">No views</div>}
-            </TreeBranch>
+          <TreeBranch
+            id="functions"
+            icon={<Code2 size={16} />}
+            label="Functions"
+            meta={functionCount ? String(functionCount) : ""}
+            expanded={expanded.functions}
+            onToggle={onToggle}
+          >
+            {functions.map((routine) => (
+              <RoutineLeaf
+                key={`${routine.schema}.${routine.name}`}
+                routine={routine}
+              />
+            ))}
+            {!functions.length && <div className="treeEmpty">No functions</div>}
+          </TreeBranch>
 
-            <TreeBranch
-              id="functions"
-              icon={<Code2 size={16} />}
-              label="Functions"
-              meta={functionCount ? String(functionCount) : ""}
-              expanded={expanded.functions}
-              onToggle={onToggle}
-            >
-              {functions.map((routine) => (
-                <RoutineLeaf
-                  key={`${routine.schema}.${routine.name}`}
-                  routine={routine}
-                />
-              ))}
-              {!functions.length && <div className="treeEmpty">No functions</div>}
-            </TreeBranch>
-
-            <TreeBranch
-              id="procedures"
-              icon={<Code2 size={16} />}
-              label="Procedures"
-              meta={procedureCount ? String(procedureCount) : ""}
-              expanded={expanded.procedures}
-              onToggle={onToggle}
-            >
-              {procedures.map((routine) => (
-                <RoutineLeaf
-                  key={`${routine.schema}.${routine.name}`}
-                  routine={routine}
-                />
-              ))}
-              {!procedures.length && (
-                <div className="treeEmpty">No procedures</div>
-              )}
-            </TreeBranch>
-          </DatabaseBranch>
-        ))}
-        {!databases.length && <div className="treeEmpty">No databases</div>}
-      </TreeBranch>
+          <TreeBranch
+            id="procedures"
+            icon={<Code2 size={16} />}
+            label="Procedures"
+            meta={procedureCount ? String(procedureCount) : ""}
+            expanded={expanded.procedures}
+            onToggle={onToggle}
+          >
+            {procedures.map((routine) => (
+              <RoutineLeaf
+                key={`${routine.schema}.${routine.name}`}
+                routine={routine}
+              />
+            ))}
+            {!procedures.length && (
+              <div className="treeEmpty">No procedures</div>
+            )}
+          </TreeBranch>
+        </DatabaseBranch>
+      ))}
+      {!databases.length && <div className="treeEmpty">No databases</div>}
     </div>
   );
 }
@@ -1182,8 +1164,17 @@ function StatusDot({ status }) {
 }
 
 function DriverLogo({ driver }) {
-  const label = driverLabel(driver);
-  return <span className={`driverLogo ${driver || "unknown"}`}>{label.slice(0, 2)}</span>;
+  switch (driver) {
+    case "postgres":
+      return <PostgreSQLIcon className="driverLogo" />;
+    case "redis":
+      return <RedisIcon className="driverLogo" />;
+    case "elasticsearch":
+      return <ElasticsearchIcon className="driverLogo" />;
+    case "mysql":
+    default:
+      return <MySQLIcon className="driverLogo" />;
+  }
 }
 
 function ConnectionStatus({ status, driver }) {
@@ -1278,7 +1269,7 @@ function ConnectionForm({ draft, setDraft }) {
   }
   return (
     <div className="form">
-      <label>
+      <label style={{ gridColumn: "span 2" }}>
         Name
         <input
           {...connectionInputProps}
@@ -1286,17 +1277,26 @@ function ConnectionForm({ draft, setDraft }) {
           onChange={(e) => patch({ name: e.target.value })}
         />
       </label>
-      <label>
+      <label style={{ gridColumn: "span 2" }}>
         Driver
-        <select
-          value={draft.driver}
-          onChange={(e) => patch({ driver: e.target.value })}
-        >
-          <option value="mysql">MySQL</option>
-          <option value="postgres">PostgreSQL</option>
-          <option value="redis">Redis</option>
-          <option value="elasticsearch">Elasticsearch</option>
-        </select>
+        <div className="driverGrid">
+          {[
+            { id: "mysql", name: "MySQL" },
+            { id: "postgres", name: "PostgreSQL" },
+            { id: "redis", name: "Redis" },
+            { id: "elasticsearch", name: "Elasticsearch" },
+          ].map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className={`driverOption ${draft.driver === d.id ? "active" : ""}`}
+              onClick={() => patch({ driver: d.id })}
+            >
+              <DriverLogo driver={d.id} />
+              <span>{d.name}</span>
+            </button>
+          ))}
+        </div>
       </label>
       <label>
         Host
