@@ -89,17 +89,22 @@ func (s *Store) SaveConnection(conn Connection) (Connection, error) {
 	if conn.Name == "" {
 		return Connection{}, errors.New("connection name is required")
 	}
-	if conn.Driver != "postgres" && conn.Driver != "mysql" {
-		return Connection{}, errors.New("driver must be postgres or mysql")
+	if !slices.Contains([]string{"mysql", "postgres", "redis", "elasticsearch"}, conn.Driver) {
+		return Connection{}, errors.New("driver must be mysql, postgres, redis, or elasticsearch")
 	}
 	if conn.Host == "" {
 		return Connection{}, errors.New("host is required")
 	}
 	if conn.Port == 0 {
-		if conn.Driver == "postgres" {
+		switch conn.Driver {
+		case "postgres":
 			conn.Port = 5432
-		} else {
+		case "mysql":
 			conn.Port = 3306
+		case "redis":
+			conn.Port = 6379
+		case "elasticsearch":
+			conn.Port = 9200
 		}
 	}
 	if conn.ID == "" {

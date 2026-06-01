@@ -27,7 +27,7 @@ dev:
 	env -u GOROOT $(WAILS) dev
 
 build:
-	env -u GOROOT $(WAILS) build -clean
+	env -u GOROOT $(WAILS) build -clean &&  cp -R build/bin/dbVibe.app /Applications/
 
 frontend:
 	npm --prefix frontend run dev

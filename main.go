@@ -15,7 +15,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "TNT SQL",
+		Title:  "dbVibe",
 		Width:  1440,
 		Height: 920,
 		AssetServer: &assetserver.Options{

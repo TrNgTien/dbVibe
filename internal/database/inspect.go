@@ -23,6 +23,36 @@ func postgresTables(ctx context.Context, db *sql.DB) ([]TableInfo, error) {
 	return scanTableInfo(rows)
 }
 
+func postgresDatabases(ctx context.Context, db *sql.DB) ([]DatabaseInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select datname, pg_database_size(datname)
+		from pg_database
+		where datallowconn
+			and datistemplate = false
+		order by datname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDatabases(rows)
+}
+
+func mysqlDatabases(ctx context.Context, db *sql.DB) ([]DatabaseInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select s.schema_name,
+			coalesce(sum(t.data_length + t.index_length), 0)
+		from information_schema.schemata s
+		left join information_schema.tables t on t.table_schema = s.schema_name
+		where s.schema_name not in ('information_schema', 'performance_schema', 'sys')
+		group by s.schema_name
+		order by s.schema_name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDatabases(rows)
+}
+
 func mysqlTables(ctx context.Context, db *sql.DB, database string) ([]TableInfo, error) {
 	rows, err := db.QueryContext(ctx, `
 		select table_schema, table_name, table_type, coalesce(table_rows, 0)
@@ -34,6 +64,35 @@ func mysqlTables(ctx context.Context, db *sql.DB, database string) ([]TableInfo,
 	}
 	defer rows.Close()
 	return scanTableInfo(rows)
+}
+
+func postgresRoutines(ctx context.Context, db *sql.DB) ([]RoutineInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select n.nspname, p.proname,
+			case when p.prokind = 'p' then 'procedure' else 'function' end
+		from pg_proc p
+		join pg_namespace n on n.oid = p.pronamespace
+		where n.nspname not in ('pg_catalog', 'information_schema')
+			and p.prokind in ('f', 'p')
+		order by 1, 2`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRoutines(rows)
+}
+
+func mysqlRoutines(ctx context.Context, db *sql.DB, database string) ([]RoutineInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select routine_schema, routine_name, lower(routine_type)
+		from information_schema.routines
+		where routine_schema = ?
+		order by routine_name`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanRoutines(rows)
 }
 
 func inspectPostgresTable(ctx context.Context, db *sql.DB, schema, table string, limit int) (TableDetail, error) {
@@ -149,13 +208,24 @@ func mysqlCreateSQL(ctx context.Context, db *sql.DB, table string) (string, erro
 		return "", err
 	}
 	defer rows.Close()
-	var name, createSQL string
 	if rows.Next() {
-		if err := rows.Scan(&name, &createSQL); err != nil {
+		columns, err := rows.Columns()
+		if err != nil {
 			return "", err
 		}
+		values := make([]sql.NullString, len(columns))
+		dest := make([]any, len(columns))
+		for i := range values {
+			dest[i] = &values[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return "", err
+		}
+		if len(values) > 1 {
+			return values[1].String, nil
+		}
 	}
-	return createSQL, rows.Err()
+	return "", rows.Err()
 }
 
 func postgresCreateSQL(schema, table string, columns []Column) string {
@@ -178,6 +248,30 @@ func scanTableInfo(rows *sql.Rows) ([]TableInfo, error) {
 	for rows.Next() {
 		var item TableInfo
 		if err := rows.Scan(&item.Schema, &item.Name, &item.Type, &item.Rows); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanDatabases(rows *sql.Rows) ([]DatabaseInfo, error) {
+	items := make([]DatabaseInfo, 0)
+	for rows.Next() {
+		var item DatabaseInfo
+		if err := rows.Scan(&item.Name, &item.Size); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func scanRoutines(rows *sql.Rows) ([]RoutineInfo, error) {
+	items := make([]RoutineInfo, 0)
+	for rows.Next() {
+		var item RoutineInfo
+		if err := rows.Scan(&item.Schema, &item.Name, &item.Type); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

@@ -5,3 +5,4 @@ frontend/.npm-cache
 frontend/dist
 frontend/node_modules
 frontend/wailsjs
+.DS_Store

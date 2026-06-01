@@ -1,4 +1,4 @@
-# TNT SQL
+# dbVibe
 
 Minimal macOS SQL client built with Wails, Go, and React. It focuses on fast database debugging for PostgreSQL and MySQL without Electron.
 

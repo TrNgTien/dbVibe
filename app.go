@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"sql-gui/internal/database"
@@ -13,8 +14,16 @@ import (
 )
 
 type App struct {
-	ctx   context.Context
-	store *store.Store
+	ctx      context.Context
+	store    *store.Store
+	sessions map[string]*connectionSession
+	mu       sync.Mutex
+}
+
+type connectionSession struct {
+	conn     store.Connection
+	db       *sql.DB
+	lastUsed time.Time
 }
 
 func NewApp() *App {
@@ -24,6 +33,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.store = store.New("tnt-sql")
+	a.sessions = make(map[string]*connectionSession)
+	go a.reapIdleSessions()
 }
 
 func (a *App) ListConnections() ([]store.Connection, error) {
@@ -39,14 +50,9 @@ func (a *App) DeleteConnection(id string) error {
 }
 
 func (a *App) TestConnection(conn store.Connection) error {
-	db, err := database.Open(conn)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
 	ctx, cancel := context.WithTimeout(a.ctx, 6*time.Second)
 	defer cancel()
-	return db.PingContext(ctx)
+	return database.TestConnection(ctx, conn)
 }
 
 func (a *App) Connect(connectionID string) (database.ConnectionDetail, error) {
@@ -54,28 +60,76 @@ func (a *App) Connect(connectionID string) (database.ConnectionDetail, error) {
 	if err != nil {
 		return database.ConnectionDetail{}, err
 	}
-	db, err := database.Open(conn)
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+		ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+		defer cancel()
+		detail, err := database.InspectExternalConnection(ctx, conn)
+		if err == nil {
+			a.touchExternalSession(connectionID, conn)
+		}
+		return detail, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
 	if err != nil {
 		return database.ConnectionDetail{}, err
 	}
-	defer db.Close()
-	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
-	defer cancel()
 	return database.InspectConnection(ctx, db, conn)
 }
 
+func (a *App) ConnectDatabase(connectionID, databaseName string) (database.ConnectionDetail, error) {
+	conn, err := a.store.GetConnection(connectionID)
+	if err != nil {
+		return database.ConnectionDetail{}, err
+	}
+	if strings.TrimSpace(databaseName) != "" {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+		ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+		defer cancel()
+		detail, err := database.InspectExternalConnection(ctx, conn)
+		if err == nil {
+			a.touchExternalSession(connectionID, conn)
+		}
+		return detail, err
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
+	defer cancel()
+	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return database.ConnectionDetail{}, err
+	}
+	return database.InspectConnectionDatabase(ctx, db, conn, conn.Database)
+}
+
 func (a *App) GetTableDetail(connectionID, schema, table string, limit int) (database.TableDetail, error) {
+	return a.GetDatabaseTableDetail(connectionID, "", schema, table, limit)
+}
+
+func (a *App) GetDatabaseTableDetail(connectionID, databaseName, schema, table string, limit int) (database.TableDetail, error) {
 	conn, db, err := a.openStored(connectionID)
 	if err != nil {
 		return database.TableDetail{}, err
 	}
-	defer db.Close()
+	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
 	ctx, cancel := context.WithTimeout(a.ctx, 12*time.Second)
 	defer cancel()
+	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return database.TableDetail{}, err
+	}
 	return database.InspectTable(ctx, db, conn, schema, table, limit)
 }
 
 func (a *App) Execute(connectionID, sqlText string, limit int) (database.QueryResult, error) {
+	return a.ExecuteDatabase(connectionID, "", sqlText, limit)
+}
+
+func (a *App) ExecuteDatabase(connectionID, databaseName, sqlText string, limit int) (database.QueryResult, error) {
 	if strings.TrimSpace(sqlText) == "" {
 		return database.QueryResult{}, errors.New("SQL is empty")
 	}
@@ -83,13 +137,23 @@ func (a *App) Execute(connectionID, sqlText string, limit int) (database.QueryRe
 	if err != nil {
 		return database.QueryResult{}, err
 	}
-	defer db.Close()
+	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return database.QueryResult{}, err
+	}
 	return database.Execute(ctx, db, conn.Driver, sqlText, limit)
 }
 
 func (a *App) ExplainAnalyze(connectionID, sqlText string) (database.QueryResult, error) {
+	return a.ExplainAnalyzeDatabase(connectionID, "", sqlText)
+}
+
+func (a *App) ExplainAnalyzeDatabase(connectionID, databaseName, sqlText string) (database.QueryResult, error) {
 	if strings.TrimSpace(sqlText) == "" {
 		return database.QueryResult{}, errors.New("SQL is empty")
 	}
@@ -97,10 +161,32 @@ func (a *App) ExplainAnalyze(connectionID, sqlText string) (database.QueryResult
 	if err != nil {
 		return database.QueryResult{}, err
 	}
-	defer db.Close()
+	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
 	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
 	defer cancel()
+	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return database.QueryResult{}, err
+	}
 	return database.ExplainAnalyze(ctx, db, conn.Driver, sqlText)
+}
+
+func (a *App) CloseConnection(connectionID, databaseName string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	prefix := connectionID + "|"
+	key := sessionKey(connectionID, databaseName)
+	for existingKey, session := range a.sessions {
+		if existingKey == key || (strings.TrimSpace(databaseName) == "" && strings.HasPrefix(existingKey, prefix)) {
+			if session.db != nil {
+				_ = session.db.Close()
+			}
+			delete(a.sessions, existingKey)
+		}
+	}
+	return nil
 }
 
 func (a *App) ListSavedQueries(connectionID string) ([]store.SavedQuery, error) {
@@ -123,9 +209,80 @@ func (a *App) openStored(connectionID string) (store.Connection, *sql.DB, error)
 	if err != nil {
 		return store.Connection{}, nil, err
 	}
+	return conn, nil, nil
+}
+
+func (a *App) openSession(ctx context.Context, connectionID string, conn store.Connection, databaseName string) (store.Connection, *sql.DB, error) {
+	if strings.TrimSpace(databaseName) != "" {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	key := sessionKey(connectionID, conn.Database)
+	a.mu.Lock()
+	if session := a.sessions[key]; session != nil && session.db != nil {
+		session.lastUsed = time.Now()
+		session.conn = conn
+		db := session.db
+		a.mu.Unlock()
+		return conn, db, nil
+	}
+	a.mu.Unlock()
+
 	db, err := database.Open(conn)
 	if err != nil {
 		return store.Connection{}, nil, fmt.Errorf("open connection: %w", err)
 	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return store.Connection{}, nil, err
+	}
+
+	a.mu.Lock()
+	a.sessions[key] = &connectionSession{conn: conn, db: db, lastUsed: time.Now()}
+	a.mu.Unlock()
 	return conn, db, nil
+}
+
+func (a *App) touchExternalSession(connectionID string, conn store.Connection) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.sessions[sessionKey(connectionID, conn.Database)] = &connectionSession{conn: conn, lastUsed: time.Now()}
+}
+
+func (a *App) reapIdleSessions() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.ctx.Done():
+			a.closeAllSessions()
+			return
+		case <-ticker.C:
+			cutoff := time.Now().Add(-10 * time.Minute)
+			a.mu.Lock()
+			for key, session := range a.sessions {
+				if session.lastUsed.Before(cutoff) {
+					if session.db != nil {
+						_ = session.db.Close()
+					}
+					delete(a.sessions, key)
+				}
+			}
+			a.mu.Unlock()
+		}
+	}
+}
+
+func (a *App) closeAllSessions() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for key, session := range a.sessions {
+		if session.db != nil {
+			_ = session.db.Close()
+		}
+		delete(a.sessions, key)
+	}
+}
+
+func sessionKey(connectionID, databaseName string) string {
+	return connectionID + "|" + strings.TrimSpace(databaseName)
 }
