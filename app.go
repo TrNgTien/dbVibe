@@ -14,6 +14,8 @@ import (
 
 	"sql-gui/internal/database"
 	"sql-gui/internal/store"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -119,14 +121,14 @@ func (a *App) GetCompletions(connectionID, databaseName, text string, position i
 	if strings.TrimSpace(databaseName) != "" {
 		conn.Database = strings.TrimSpace(databaseName)
 	}
-	
+
 	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
 	defer cancel()
 
 	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
 		return database.GetCompletions(ctx, nil, conn, text, position)
 	}
-	
+
 	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
 	if err != nil {
 		return nil, err
@@ -228,6 +230,43 @@ func (a *App) SaveQuery(query store.SavedQuery) (store.SavedQuery, error) {
 
 func (a *App) DeleteQuery(id string) error {
 	return a.store.DeleteQuery(id)
+}
+
+func (a *App) ExportQueryResult(content string, defaultFilename string, filterName string, filterPattern string) (string, error) {
+	ctx := a.ctx
+	if ctx == nil {
+		return "", fmt.Errorf("app context is nil")
+	}
+
+	options := runtime.SaveDialogOptions{
+		DefaultFilename: defaultFilename,
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: filterName,
+				Pattern:     filterPattern,
+			},
+		},
+	}
+
+	filepath, err := runtime.SaveFileDialog(ctx, options)
+	if err != nil {
+		return "", err
+	}
+
+	if filepath == "" {
+		return "", nil
+	}
+
+	err = os.WriteFile(filepath, []byte(content), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to save file: %w", err)
+	}
+
+	return filepath, nil
+}
+
+func (a *App) AutoDeleteQueries(days int) error {
+	return a.store.AutoDeleteQueries(days)
 }
 
 func (a *App) ListBinlogs(connectionID string) ([]string, error) {

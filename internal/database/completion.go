@@ -122,7 +122,7 @@ func fetchRedisKeys(ctx context.Context, conn store.Connection, pattern string) 
 		return nil, err
 	}
 	if strings.HasPrefix(line, "-") {
-		return nil, fmt.Errorf(strings.TrimSpace(strings.TrimPrefix(line, "-")))
+		return nil, fmt.Errorf("%s", strings.TrimSpace(strings.TrimPrefix(line, "-")))
 	}
 	if !strings.HasPrefix(line, "*") {
 		return nil, fmt.Errorf("unexpected response from KEYS: %s", line)

@@ -23,6 +23,7 @@ type Connection struct {
 	Password string `json:"password"`
 	SSLMode  string `json:"sslMode"`
 	UseTLS   bool   `json:"useTLS"`
+	IsPinned bool   `json:"isPinned"`
 }
 
 type SavedQuery struct {
@@ -61,6 +62,12 @@ func (s *Store) ListConnections() ([]Connection, error) {
 		return nil, err
 	}
 	slices.SortFunc(data.Connections, func(a, b Connection) int {
+		if a.IsPinned != b.IsPinned {
+			if a.IsPinned {
+				return -1
+			}
+			return 1
+		}
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 	return data.Connections, nil
@@ -205,6 +212,25 @@ func (s *Store) DeleteQuery(id string) error {
 	}
 	data.Queries = slices.DeleteFunc(data.Queries, func(query SavedQuery) bool {
 		return query.ID == id
+	})
+	return s.write(data)
+}
+
+func (s *Store) AutoDeleteQueries(days int) error {
+	if days <= 0 {
+		return nil
+	}
+	data, err := s.read()
+	if err != nil {
+		return err
+	}
+	cutoff := time.Now().AddDate(0, 0, -days)
+	data.Queries = slices.DeleteFunc(data.Queries, func(query SavedQuery) bool {
+		t, err := time.Parse(time.RFC3339, query.UpdatedAt)
+		if err != nil {
+			return false
+		}
+		return t.Before(cutoff)
 	})
 	return s.write(data)
 }

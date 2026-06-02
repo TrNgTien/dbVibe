@@ -80,9 +80,24 @@ button:disabled {
 
 .app {
   display: grid;
-  grid-template-columns: 360px 1fr;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+}
+
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.sidebar-resizer:hover, .sidebar-resizer.resizing {
+  background-color: #4c8dff;
 }
 
 .startup {
@@ -297,6 +312,11 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.pinIcon {
+  color: #95a0ad;
+  margin-left: 2px;
 }
 
 .connectionItem .driverLogo {
@@ -1278,6 +1298,74 @@ td {
 
 .rowDetail {
   min-height: 220px;
+}
+
+.rowFields {
+  display: grid;
+  gap: 16px;
+}
+
+.rowField {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #252b34;
+}
+
+.rowField:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.rowFieldHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowFieldHeader strong {
+  font-size: 13px;
+  color: #aab3be;
+}
+
+.rowFieldHeader .iconButton {
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 2px;
+  color: #6f7a86;
+}
+
+.rowField:hover .rowFieldHeader .iconButton {
+  opacity: 1;
+}
+
+.rowFieldValue {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  color: #e8edf2;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.explainValue {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  color: #e8edf2;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.nullValue {
+  color: #6f7a86;
+  font-style: italic;
+}
+
+.jsonValue {
+  background: #111418;
+  border: 1px solid #2c333d;
+  padding: 10px;
+  border-radius: 6px;
+  margin: 0;
 }
 
 .error,

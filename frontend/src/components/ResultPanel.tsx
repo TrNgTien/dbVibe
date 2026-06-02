@@ -1,0 +1,359 @@
+import React, { useState, useRef, useEffect } from "react";
+import { X, Copy, Download } from "lucide-react";
+import { api } from "../utils/api";
+
+export function ResultPanel({ title, result, onUpdateTTL }) {
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Add click outside handler for export menu
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        exportMenuRef.current &&
+        !exportMenuRef.current.contains(event.target as Node)
+      ) {
+        setExportMenuOpen(false);
+      }
+    }
+    if (exportMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [exportMenuOpen]);
+
+  if (!result) return null;
+  const isExplain = title.toLowerCase().includes("explain");
+
+  const handleExport = async (format: "csv" | "json") => {
+    setExportMenuOpen(false);
+    if (!result.columns || !result.rows || result.rows.length === 0) {
+      return;
+    }
+
+    try {
+      let content = "";
+      let defaultFilename = "";
+      let filterName = "";
+      let filterPattern = "";
+
+      if (format === "json") {
+        content = JSON.stringify(result.rows, null, 2);
+        defaultFilename = "export.json";
+        filterName = "JSON Files (*.json)";
+        filterPattern = "*.json";
+      } else if (format === "csv") {
+        // Escape CSV field
+        const escapeCSV = (val: any) => {
+          if (val === null || val === undefined) return "";
+          const str = String(val);
+          if (
+            str.includes(",") ||
+            str.includes('"') ||
+            str.includes("\n") ||
+            str.includes("\r")
+          ) {
+            return '"' + str.replace(/"/g, '""') + '"';
+          }
+          return str;
+        };
+
+        const headers = result.columns.map(escapeCSV).join(",");
+        const rows = result.rows
+          .map((row: any) =>
+            result.columns.map((col: any) => escapeCSV(row[col])).join(","),
+          )
+          .join("\n");
+
+        content = headers + "\n" + rows;
+        defaultFilename = "export.csv";
+        filterName = "CSV Files (*.csv)";
+        filterPattern = "*.csv";
+      }
+
+      await api.call(
+        "ExportQueryResult",
+        content,
+        defaultFilename,
+        filterName,
+        filterPattern,
+      );
+    } catch (e) {
+      console.error("Export failed:", e);
+    }
+  };
+
+  return (
+    <section className="panel resultPanel">
+      <div className="panelHead">
+        <h2>{title}</h2>
+        <div className="rowActions">
+          {result.columns?.length > 0 && result.rows?.length > 0 && (
+            <div
+              className="exportContainer"
+              style={{ position: "relative" }}
+              ref={exportMenuRef}
+            >
+              <button
+                className="iconButton"
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                title="Export Results"
+              >
+                <Download size={14} />
+              </button>
+              {exportMenuOpen && (
+                <div
+                  className="contextMenu"
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: "4px",
+                  }}
+                >
+                  <button onClick={() => handleExport("csv")}>
+                    Export to CSV
+                  </button>
+                  <button onClick={() => handleExport("json")}>
+                    Export to JSON
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {result.redisKey && (
+            <div className="ttlDisplay">
+              <span>
+                {result.redisTTL === -1
+                  ? "TTL: persistent forever"
+                  : `TTL: ${result.redisTTL}s`}
+              </span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    onUpdateTTL(Number(e.target.value));
+                    e.target.value = "";
+                  }
+                }}
+                value=""
+              >
+                <option value="" disabled>
+                  Update interval...
+                </option>
+                <option value="-1">Persistent (Remove TTL)</option>
+                <option value="60">1 minute</option>
+                <option value="300">5 minutes</option>
+                <option value="3600">1 hour</option>
+                <option value="86400">1 day</option>
+              </select>
+            </div>
+          )}
+          <span>
+            {result.durationMs ?? 0}ms{" "}
+            {result.message ? `· ${result.message}` : ""}
+          </span>
+        </div>
+      </div>
+      {result.columns?.length ? (
+        <div className="resultScroll">
+          <table>
+            <thead>
+              <tr>
+                {result.columns.map((column) => (
+                  <th key={column}>{column}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(result.rows || []).map((row, index) => (
+                <tr
+                  key={index}
+                  className="clickableRow"
+                  onClick={() => setSelectedRow({ row, index })}
+                >
+                  {result.columns.map((column) => (
+                    <td key={column}>{row[column]}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="empty">
+          {result.message || `${result.rowsAffected || 0} rows affected`}
+        </p>
+      )}
+      {selectedRow && (
+        <RowDetailModal
+          title={`${title} row ${selectedRow.index + 1}`}
+          row={selectedRow.row}
+          isExplain={isExplain}
+          onClose={() => setSelectedRow(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+export function TableInspector({ detail }) {
+  return (
+    <section className="inspector">
+      <div className="panel mini">
+        <h2>Columns</h2>
+        <div className="columns">
+          {detail.columns.map((column) => (
+            <div key={column.name}>
+              <strong>{column.name}</strong>
+              <span>{column.type}</span>
+              <small>
+                {column.nullable ? "nullable" : "not null"}{" "}
+                {column.default ? `· ${column.default}` : ""}
+              </small>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="panel mini">
+        <h2>Indexes</h2>
+        <div className="indexes">
+          {detail.indexes.map((index) => (
+            <div key={index.name}>
+              <strong>{index.name}</strong>
+              <span>
+                {index.unique ? "unique" : "index"} {index.columns}
+              </span>
+              <small>{index.sql}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="panel mini ddl">
+        <h2>Create Table</h2>
+        <pre>{detail.createSql}</pre>
+      </div>
+    </section>
+  );
+}
+
+function RowDetailModal({ title, row, isExplain, onClose }) {
+  const [viewMode, setViewMode] = useState("list"); // 'list' or 'json'
+
+  const isJson = (val) => {
+    if (typeof val !== "string") return false;
+    try {
+      const parsed = JSON.parse(val);
+      return typeof parsed === "object" && parsed !== null;
+    } catch {
+      return false;
+    }
+  };
+
+  const formatValue = (val) => {
+    if (val === null || val === undefined)
+      return <span className="nullValue">null</span>;
+    if (typeof val === "string" && isJson(val)) {
+      return (
+        <pre className="jsonValue">
+          {JSON.stringify(JSON.parse(val), null, 2)}
+        </pre>
+      );
+    }
+    return String(val);
+  };
+
+  const getJsonRow = () => {
+    const jsonRow = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (typeof v === "string" && isJson(v)) {
+        try {
+          jsonRow[k] = JSON.parse(v);
+        } catch {
+          jsonRow[k] = v;
+        }
+      } else {
+        // Convert numeric strings back to numbers for prettier JSON if they strictly match
+        if (typeof v === "string" && !isNaN(Number(v)) && v.trim() !== "") {
+          jsonRow[k] = Number(v);
+        } else if (v === "true" || v === "false") {
+          jsonRow[k] = v === "true";
+        } else {
+          jsonRow[k] = v;
+        }
+      }
+    }
+    return JSON.stringify(jsonRow, null, 2);
+  };
+
+  return (
+    <div className="modalBackdrop" onMouseDown={onClose}>
+      <div
+        className="modalPanel rowModal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="modalHead">
+          <h2>{title}</h2>
+          {!isExplain && (
+            <div className="viewTabs" style={{ margin: "0 auto 0 16px" }}>
+              <button
+                className={viewMode === "list" ? "active" : ""}
+                onClick={() => setViewMode("list")}
+              >
+                List
+              </button>
+              <button
+                className={viewMode === "json" ? "active" : ""}
+                onClick={() => setViewMode("json")}
+              >
+                JSON
+              </button>
+            </div>
+          )}
+          <button className="iconButton" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="modalBody rowDetail">
+          {isExplain ? (
+            <pre className="explainValue">{Object.values(row)[0]}</pre>
+          ) : viewMode === "json" ? (
+            <div style={{ position: "relative" }}>
+              <button
+                className="iconButton small"
+                style={{ position: "absolute", top: 8, right: 8 }}
+                title="Copy JSON"
+                onClick={() => navigator.clipboard.writeText(getJsonRow())}
+              >
+                <Copy size={14} />
+              </button>
+              <pre className="jsonValue" style={{ margin: 0 }}>
+                {getJsonRow()}
+              </pre>
+            </div>
+          ) : (
+            <div className="rowFields">
+              {Object.entries(row).map(([key, value]) => (
+                <div key={key} className="rowField">
+                  <div className="rowFieldHeader">
+                    <strong>{key}</strong>
+                    <button
+                      className="iconButton small"
+                      title="Copy value"
+                      onClick={() =>
+                        navigator.clipboard.writeText(String(value || ""))
+                      }
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                  <div className="rowFieldValue">{formatValue(value)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

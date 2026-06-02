@@ -76,6 +76,8 @@ type QueryResult struct {
 	RowsAffected int64               `json:"rowsAffected"`
 	DurationMS   float64             `json:"durationMs"`
 	Message      string              `json:"message"`
+	RedisKey     string              `json:"redisKey,omitempty"`
+	RedisTTL     *int64              `json:"redisTTL,omitempty"` // -1 means persistent forever
 }
 
 func Open(conn store.Connection) (*sql.DB, error) {
