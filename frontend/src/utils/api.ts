@@ -211,6 +211,7 @@ async function demoCall(name, ...args) {
   }
   if (name === "ExportQueryResult") return `/tmp/${args[1] || "export.csv"}`;
   if (name === "OpenExportedFile" || name === "RevealExportedFile") return null;
+  if (name === "OpenConnectionTerminal") return null;
   if (name === "TestConnection") return null;
   if (name === "Connect" || name === "ConnectDatabase")
     return {

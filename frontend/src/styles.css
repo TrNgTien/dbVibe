@@ -1134,6 +1134,24 @@ pre {
   font-size: 12px;
 }
 
+.traceInputPanel .panelHead {
+  align-items: flex-start;
+}
+
+.traceInputPanel .rowActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.traceInputPanel .rowActions select {
+  max-width: 180px;
+}
+
+.traceError {
+  margin: 0;
+  border-radius: 0;
+}
+
 .fileButton {
   min-height: 32px;
   border: 1px solid #333a44;

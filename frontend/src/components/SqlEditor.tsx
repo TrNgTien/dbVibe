@@ -315,6 +315,10 @@ export function SqlEditor({
         }
         return "";
       },
+      getCurrentLine: () => {
+        const selection = view.state.selection.main;
+        return view.state.doc.lineAt(selection.head).text;
+      },
     };
 
     return () => {

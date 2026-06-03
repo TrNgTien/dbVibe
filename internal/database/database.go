@@ -116,7 +116,8 @@ func TestConnection(ctx context.Context, conn store.Connection) error {
 		defer db.Close()
 		return db.PingContext(ctx)
 	case "redis":
-		return testRedis(ctx, conn)
+		_, err := InspectRedis(ctx, conn)
+		return err
 	case "elasticsearch":
 		_, err := elasticsearchRequest(ctx, conn, "/_cluster/health")
 		return err
@@ -132,14 +133,7 @@ func InspectConnection(ctx context.Context, db *sql.DB, conn store.Connection) (
 func InspectExternalConnection(ctx context.Context, conn store.Connection) (ConnectionDetail, error) {
 	switch conn.Driver {
 	case "redis":
-		if err := testRedis(ctx, conn); err != nil {
-			return ConnectionDetail{}, err
-		}
-		return ConnectionDetail{
-			Driver:    conn.Driver,
-			Database:  redisDatabase(conn.Database),
-			Databases: redisDatabases(),
-		}, nil
+		return InspectRedis(ctx, conn)
 	case "elasticsearch":
 		tables, err := elasticsearchIndices(ctx, conn)
 		if err != nil {
@@ -278,40 +272,6 @@ func redisDatabase(value string) string {
 		return "0"
 	}
 	return value
-}
-
-func redisDatabases() []DatabaseInfo {
-	items := make([]DatabaseInfo, 16)
-	for i := range items {
-		items[i] = DatabaseInfo{Name: strconv.Itoa(i)}
-	}
-	return items
-}
-
-func testRedis(ctx context.Context, conn store.Connection) error {
-	dialer := net.Dialer{Timeout: 6 * time.Second}
-	raw, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(conn.Host, strconv.Itoa(conn.Port)))
-	if err != nil {
-		return err
-	}
-	defer raw.Close()
-	_ = raw.SetDeadline(time.Now().Add(6 * time.Second))
-	reader := bufio.NewReader(raw)
-	if conn.Password != "" {
-		if conn.User != "" {
-			if err := redisCommand(raw, reader, "AUTH", conn.User, conn.Password); err != nil {
-				return err
-			}
-		} else if err := redisCommand(raw, reader, "AUTH", conn.Password); err != nil {
-			return err
-		}
-	}
-	if db := redisDatabase(conn.Database); db != "0" {
-		if err := redisCommand(raw, reader, "SELECT", db); err != nil {
-			return err
-		}
-	}
-	return redisCommand(raw, reader, "PING")
 }
 
 func redisCommand(conn net.Conn, reader *bufio.Reader, parts ...string) error {

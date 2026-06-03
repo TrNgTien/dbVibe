@@ -156,7 +156,7 @@ export function ResultPanel({
                 value=""
               >
                 <option value="" disabled>
-                  Update interval...
+                  Update TTL...
                 </option>
                 <option value="-1">Persistent (Remove TTL)</option>
                 <option value="60">1 minute</option>

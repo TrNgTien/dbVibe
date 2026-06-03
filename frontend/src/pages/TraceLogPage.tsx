@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from "react";
-import { FileText, Search, X } from "lucide-react";
-import { driverLabel } from "../utils/api";
+import React, { useEffect, useMemo, useState } from "react";
+import { Download, FileText, RefreshCw, Search, X } from "lucide-react";
+import { api, driverLabel } from "../utils/api";
 
 function parseTraceEvents(text) {
   const source = String(text || "");
@@ -47,6 +47,12 @@ function collectTraceStatements(source) {
   let inStatement = false;
 
   for (const line of lines) {
+    if (line.startsWith("### ")) {
+      inStatement = true;
+      currentSql.push(line.slice(4));
+      continue;
+    }
+
     if (line.startsWith("#") || line.startsWith("/*")) {
       if (inStatement) {
         statements.push({
@@ -91,11 +97,15 @@ function traceStats(events) {
   );
 }
 
-export function TraceLogPage({ connection }) {
+export function TraceLogPage({ connection, onExport }) {
   const [traceText, setTraceText] = useState("");
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [binlogs, setBinlogs] = useState([]);
+  const [selectedBinlog, setSelectedBinlog] = useState("");
+  const [binlogLoading, setBinlogLoading] = useState(false);
+  const [binlogError, setBinlogError] = useState("");
 
   const events = useMemo(() => parseTraceEvents(traceText), [traceText]);
   const filteredEvents = useMemo(() => {
@@ -113,11 +123,59 @@ export function TraceLogPage({ connection }) {
   }, [actionFilter, events, search]);
   const stats = useMemo(() => traceStats(events), [events]);
 
+  useEffect(() => {
+    setBinlogs([]);
+    setSelectedBinlog("");
+    setBinlogError("");
+  }, [connection?.id]);
+
   async function loadTraceFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     setTraceText(await file.text());
     event.target.value = "";
+  }
+
+  async function refreshBinlogs() {
+    if (!connection?.id || connection.driver !== "mysql") return;
+    setBinlogLoading(true);
+    setBinlogError("");
+    try {
+      const items = (await api.call("ListBinlogs", connection.id)) || [];
+      setBinlogs(items);
+      setSelectedBinlog((current) =>
+        items.includes(current) ? current : items.at(-1) || "",
+      );
+    } catch (err) {
+      setBinlogError(err?.message || String(err));
+    } finally {
+      setBinlogLoading(false);
+    }
+  }
+
+  async function loadBinlog() {
+    if (!connection?.id || !selectedBinlog) return;
+    setBinlogLoading(true);
+    setBinlogError("");
+    try {
+      setTraceText(await api.call("ReadBinlog", connection.id, selectedBinlog));
+    } catch (err) {
+      setBinlogError(err?.message || String(err));
+    } finally {
+      setBinlogLoading(false);
+    }
+  }
+
+  async function exportBinlog() {
+    if (!traceText || !selectedBinlog) return;
+    await onExport?.({
+      content: traceText,
+      format: "sql",
+      defaultFilename: `${selectedBinlog}.sql`,
+      filterName: "SQL Files (*.sql)",
+      filterPattern: "*.sql",
+      rows: events.length,
+    });
   }
 
   return (
@@ -131,6 +189,44 @@ export function TraceLogPage({ connection }) {
             </small>
           </div>
           <div className="rowActions">
+            {connection?.driver === "mysql" && (
+              <>
+                <select
+                  value={selectedBinlog}
+                  onChange={(event) => setSelectedBinlog(event.target.value)}
+                  disabled={binlogLoading || !binlogs.length}
+                  title="MySQL binary log"
+                >
+                  <option value="">
+                    {binlogs.length ? "Select binlog" : "No binlogs loaded"}
+                  </option>
+                  {binlogs.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  title="Refresh binlogs"
+                  onClick={refreshBinlogs}
+                  disabled={binlogLoading}
+                >
+                  <RefreshCw size={15} /> Binlogs
+                </button>
+                <button
+                  onClick={loadBinlog}
+                  disabled={binlogLoading || !selectedBinlog}
+                >
+                  <FileText size={15} /> Load
+                </button>
+                <button
+                  onClick={exportBinlog}
+                  disabled={!traceText || !selectedBinlog}
+                >
+                  <Download size={15} /> Export
+                </button>
+              </>
+            )}
             <label className="fileButton">
               <FileText size={15} />
               Load log
@@ -142,6 +238,7 @@ export function TraceLogPage({ connection }) {
             </label>
           </div>
         </div>
+        {binlogError && <div className="error traceError">{binlogError}</div>}
         <textarea
           className="traceText"
           value={traceText}

@@ -11,6 +11,7 @@ import {
   PinOff,
   Pencil,
   PowerOff,
+  Terminal,
 } from "lucide-react";
 import { DriverLogo, StatusDot } from "./common";
 import { driverLabel, normalizeObjectType } from "../utils/api";
@@ -20,6 +21,7 @@ export function ConnectionContextMenu({
   connected,
   onCloseConnection,
   onEditConnection,
+  onOpenTerminal,
   onTogglePin,
 }) {
   return (
@@ -34,6 +36,9 @@ export function ConnectionContextMenu({
       </button>
       <button onClick={onEditConnection}>
         <Pencil size={15} /> Edit connection
+      </button>
+      <button onClick={onOpenTerminal}>
+        <Terminal size={15} /> Open terminal
       </button>
       <button onClick={onCloseConnection} disabled={!connected}>
         <PowerOff size={15} /> Close connection
@@ -180,8 +185,82 @@ function ConnectionTreeInner({
   const isRedis = driver === "redis";
   const isElasticsearch = driver === "elasticsearch";
 
-  if (isRedis || isElasticsearch) {
+  if (isElasticsearch) {
     return null;
+  }
+
+  if (isRedis) {
+    return (
+      <>
+        <div className="treeBranch">
+          <button className="treeItem" onClick={() => onToggle("databases")}>
+            <div className="treeChevron">
+              {expanded[`${connId}_databases`] ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+            </div>
+            <Database size={14} />
+            <span>Databases</span>
+            <small>{databases.length}</small>
+          </button>
+          {expanded[`${connId}_databases`] && (
+            <div className="treeChildren">
+              {databases.map((db) => {
+                const name = typeof db === "string" ? db : db.name;
+                const keyCount = typeof db === "string" ? 0 : db.size;
+                return (
+                  <button
+                    key={name}
+                    className={`treeItem ${activeDatabase === name ? "active" : ""}`}
+                    onClick={() => onOpenDatabase(name)}
+                  >
+                    <div className="treeIndent" />
+                    <Database size={14} />
+                    <span>db{name}</span>
+                    <small>{keyCount} keys</small>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="treeBranch">
+          <button className="treeItem" onClick={() => onToggle("tables")}>
+            <div className="treeChevron">
+              {expanded[`${connId}_tables`] ? (
+                <ChevronDown size={14} />
+              ) : (
+                <ChevronRight size={14} />
+              )}
+            </div>
+            <Table2 size={14} />
+            <span>Keys</span>
+            <small>{tables.length}</small>
+          </button>
+          {expanded[`${connId}_tables`] && (
+            <div className="treeChildren">
+              {tables.length === 0 && (
+                <div className="treeEmpty">No keys found</div>
+              )}
+              {tables.map((key) => (
+                <button
+                  key={key.name}
+                  className="treeItem"
+                  onClick={() => onOpenTable(key)}
+                >
+                  <div className="treeIndent" />
+                  <Table2 size={14} />
+                  <span>{key.name}</span>
+                  <small>{key.type}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    );
   }
 
   return (

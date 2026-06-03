@@ -14,6 +14,7 @@ import {
   Search,
   Settings,
   Table2,
+  Terminal,
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -61,6 +62,33 @@ function savedQueryField(query, camelName, goName) {
   return query?.[camelName] ?? query?.[goName] ?? "";
 }
 
+function redisKeyCommand(key) {
+  const name = `"${String(key.name || "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  switch (key.type) {
+    case "hash":
+      return `HGETALL ${name}`;
+    case "list":
+      return `LRANGE ${name} 0 -1`;
+    case "set":
+      return `SMEMBERS ${name}`;
+    case "zset":
+      return `ZRANGE ${name} 0 -1 WITHSCORES`;
+    case "stream":
+      return `XRANGE ${name} - + COUNT 100`;
+    default:
+      return `GET ${name}`;
+  }
+}
+
+function redisCommandToRun(selection, currentLine, text) {
+  if (selection?.trim()) return selection.trim();
+  if (currentLine?.trim()) return currentLine.trim();
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+}
+
 const defaultGeneralSettings = {
   autoDeleteQueryDays: 0,
   editorFontSize: 14,
@@ -74,6 +102,7 @@ const defaultGeneralSettings = {
   resultRowDensity: "normal",
   showAlternateRows: true,
   nullDisplay: "NULL",
+  redisRefreshSeconds: 0,
 };
 
 function firstSqlKeyword(sqlText) {
@@ -195,6 +224,7 @@ function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [exportProgress, setExportProgress] = useState(null);
+  const [lastRedisCommand, setLastRedisCommand] = useState("");
   const toastTimeoutRef = useRef(null);
   const exportToastTimeoutRef = useRef(null);
 
@@ -265,6 +295,45 @@ function App() {
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, [isResizing]);
+
+  useEffect(() => {
+    setLastRedisCommand("");
+  }, [selected?.id]);
+
+  useEffect(() => {
+    const seconds = Number(generalSettings.redisRefreshSeconds || 0);
+    if (
+      seconds <= 0 ||
+      selected?.driver !== "redis" ||
+      !selected?.id ||
+      !lastRedisCommand
+    ) {
+      return;
+    }
+    const interval = window.setInterval(async () => {
+      try {
+        const next = await api.call(
+          "ExecuteDatabase",
+          selected.id,
+          detail?.database || selected.database || "",
+          lastRedisCommand,
+          generalSettings.queryResultLimit ?? 500,
+        );
+        setResult(next);
+      } catch (err) {
+        setError(err?.message || String(err));
+      }
+    }, seconds * 1000);
+    return () => window.clearInterval(interval);
+  }, [
+    detail?.database,
+    generalSettings.queryResultLimit,
+    generalSettings.redisRefreshSeconds,
+    lastRedisCommand,
+    selected?.database,
+    selected?.driver,
+    selected?.id,
+  ]);
 
   useEffect(() => {
     refreshConnections();
@@ -567,6 +636,24 @@ function App() {
     }
     const driver = activeDetail?.driver || conn.driver;
     const database = activeDetail?.database || "";
+    if (driver === "redis") {
+      const command = redisKeyCommand(table);
+      setSqlText(command);
+      const next = await run("read redis key", () =>
+        api.call(
+          "ExecuteDatabase",
+          connId,
+          database,
+          command,
+          generalSettings.queryResultLimit ?? 500,
+        ),
+      );
+      setTableDetail(null);
+      setResult(next);
+      setLastRedisCommand(command);
+      setShowTableDetail(false);
+      return;
+    }
     const next = await run("table detail", () =>
       api.call(
         "GetDatabaseTableDetail",
@@ -588,11 +675,26 @@ function App() {
   async function execute() {
     if (!selected?.id) return;
     const selection = editorRef.current?.getSelection?.();
-    const queryToRun = withDefaultSelectLimit(
-      selection || sqlText,
-      generalSettings.defaultSelectLimit ?? 100,
-    );
-    if (!selection && queryToRun !== sqlText) {
+    const queryToRun =
+      selected.driver === "redis"
+        ? redisCommandToRun(
+            selection,
+            editorRef.current?.getCurrentLine?.(),
+            sqlText,
+          )
+        : withDefaultSelectLimit(
+            selection || sqlText,
+            generalSettings.defaultSelectLimit ?? 100,
+          );
+    if (!queryToRun) return;
+    const redisHasSingleCommand =
+      selected.driver === "redis" &&
+      sqlText.split(/\r?\n/).filter((line) => line.trim()).length === 1;
+    if (
+      !selection &&
+      queryToRun !== sqlText &&
+      (selected.driver !== "redis" || redisHasSingleCommand)
+    ) {
       setSqlText(queryToRun);
     }
     const next = await run("execute", () =>
@@ -605,6 +707,9 @@ function App() {
       ),
     );
     setResult(next);
+    if (selected.driver === "redis") {
+      setLastRedisCommand(queryToRun);
+    }
     setShowTableDetail(false);
   }
 
@@ -801,6 +906,20 @@ function App() {
     setConnectionMenu(null);
   }
 
+  async function openConnectionTerminal(conn = selected) {
+    if (!conn?.id) return;
+    await run("open terminal", () =>
+      api.call(
+        "OpenConnectionTerminal",
+        conn.id,
+        selected?.id === conn.id
+          ? detail?.database || conn.database || ""
+          : conn.database || "",
+      ),
+    );
+    setConnectionMenu(null);
+  }
+
   function openConnectionMenu(event, conn) {
     event.preventDefault();
     setConnectionMenu({
@@ -988,6 +1107,7 @@ function App() {
                   closeConnectedConnection(connectionMenu.conn)
                 }
                 onEditConnection={() => editConnection(connectionMenu.conn)}
+                onOpenTerminal={() => openConnectionTerminal(connectionMenu.conn)}
                 onTogglePin={() => {
                   togglePin(connectionMenu.conn);
                   setConnectionMenu(null);
@@ -1058,6 +1178,13 @@ function App() {
                 </button>
               </div>
             )}
+            <button
+              title="Open connection terminal"
+              onClick={() => openConnectionTerminal()}
+              disabled={!selected?.id}
+            >
+              <Terminal size={16} />
+            </button>
             <button
               title="Settings (Cmd+,)"
               onClick={openSettings}
@@ -1163,9 +1290,12 @@ function App() {
                     <button onClick={saveCurrentQuery}>
                       <Save size={15} /> Query
                     </button>
-                    <button onClick={explainAnalyze}>
-                      <Activity size={15} /> Explain
-                    </button>
+                    {(selected?.driver === "mysql" ||
+                      selected?.driver === "postgres") && (
+                      <button onClick={explainAnalyze}>
+                        <Activity size={15} /> Explain
+                      </button>
+                    )}
                     <button className="primary" onClick={execute}>
                       <Play size={15} /> Run
                     </button>
@@ -1226,7 +1356,7 @@ function App() {
           )}
 
         {!editingConnectionDetails && workspaceView === "trace" && (
-          <TraceLogPage connection={selected} />
+          <TraceLogPage connection={selected} onExport={exportQueryResult} />
         )}
 
         {!editingConnectionDetails && workspaceView === "exports" && (

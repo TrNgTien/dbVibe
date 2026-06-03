@@ -161,9 +161,9 @@ func (a *App) Execute(connectionID, sqlText string, limit int) (database.QueryRe
 
 func (a *App) ExecuteDatabase(connectionID, databaseName, sqlText string, limit int) (database.QueryResult, error) {
 	if strings.TrimSpace(sqlText) == "" {
-		return database.QueryResult{}, errors.New("SQL is empty")
+		return database.QueryResult{}, errors.New("command is empty")
 	}
-	conn, db, err := a.openStored(connectionID)
+	conn, _, err := a.openStored(connectionID)
 	if err != nil {
 		return database.QueryResult{}, err
 	}
@@ -172,6 +172,13 @@ func (a *App) ExecuteDatabase(connectionID, databaseName, sqlText string, limit 
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
+	if conn.Driver == "redis" {
+		return database.ExecuteRedis(ctx, conn, sqlText)
+	}
+	if conn.Driver == "elasticsearch" {
+		return database.QueryResult{}, errors.New("Elasticsearch command execution is not implemented")
+	}
+	var db *sql.DB
 	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
 	if err != nil {
 		return database.QueryResult{}, err
@@ -193,6 +200,9 @@ func (a *App) ExplainAnalyzeDatabase(connectionID, databaseName, sqlText string)
 	}
 	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
 		conn.Database = strings.TrimSpace(databaseName)
+	}
+	if conn.Driver != "mysql" && conn.Driver != "postgres" {
+		return database.QueryResult{}, fmt.Errorf("explain analyze is not supported for %s", conn.Driver)
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
 	defer cancel()
@@ -323,20 +333,95 @@ func openPath(filePath string) error {
 	}
 }
 
+func (a *App) OpenConnectionTerminal(connectionID, databaseName string) error {
+	conn, err := a.store.GetConnection(connectionID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(databaseName) != "" {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	command, err := connectionTerminalCommand(conn)
+	if err != nil {
+		return err
+	}
+	if goruntime.GOOS != "darwin" {
+		return errors.New("opening a connection terminal is only supported on macOS")
+	}
+	script := fmt.Sprintf(
+		`tell application "Terminal" to do script %q`,
+		command,
+	)
+	if err := exec.Command("osascript", "-e", script).Start(); err != nil {
+		return fmt.Errorf("open connection terminal: %w", err)
+	}
+	return nil
+}
+
+func connectionTerminalCommand(conn store.Connection) (string, error) {
+	host := shellQuote(conn.Host)
+	port := strconv.Itoa(conn.Port)
+	user := shellQuote(conn.User)
+	databaseName := shellQuote(conn.Database)
+
+	switch conn.Driver {
+	case "mysql":
+		command := fmt.Sprintf("mysql --host=%s --port=%s --user=%s --password", host, port, user)
+		if conn.Database != "" {
+			command += " " + databaseName
+		}
+		return command, nil
+	case "postgres":
+		command := fmt.Sprintf("psql --host=%s --port=%s --username=%s --password", host, port, user)
+		if conn.Database != "" {
+			command += " --dbname=" + databaseName
+		}
+		return command, nil
+	case "redis":
+		command := fmt.Sprintf("redis-cli --host %s --port %s", host, port)
+		if conn.Database != "" {
+			command += " -n " + databaseName
+		}
+		if conn.Password != "" {
+			command += " --askpass"
+		}
+		return command, nil
+	case "elasticsearch":
+		scheme := "http"
+		if conn.UseTLS {
+			scheme = "https"
+		}
+		command := fmt.Sprintf("curl --include %s://%s:%s/", scheme, host, port)
+		if conn.User != "" {
+			command = fmt.Sprintf("curl --include --user %s %s://%s:%s/", user, scheme, host, port)
+		}
+		return command, nil
+	default:
+		return "", fmt.Errorf("unsupported connection driver %q", conn.Driver)
+	}
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
 func (a *App) AutoDeleteQueries(days int) error {
 	return a.store.AutoDeleteQueries(days)
 }
 
 func (a *App) ListBinlogs(connectionID string) ([]string, error) {
-	conn, db, err := a.openStored(connectionID)
+	conn, _, err := a.openStored(connectionID)
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
-
 	if conn.Driver != "mysql" {
 		return nil, errors.New("binlogs are only supported for MySQL")
 	}
+	db, err := database.Open(conn)
+	if err != nil {
+		return nil, fmt.Errorf("open connection: %w", err)
+	}
+	defer db.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -358,6 +443,9 @@ func (a *App) ListBinlogs(connectionID string) ([]string, error) {
 			return nil, err
 		}
 		binlogs = append(binlogs, string(*vals[0].(*sql.RawBytes)))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list binlogs: %w", err)
 	}
 	return binlogs, nil
 }
@@ -384,13 +472,13 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 		"--host=" + conn.Host,
 		"--port=" + strconv.Itoa(conn.Port),
 		"--user=" + conn.User,
-		"--password=" + conn.Password,
 		"--base64-output=DECODE-ROWS",
 		"-v",
 		logName,
 	}
 
 	cmd := exec.Command("mysqlbinlog", args...)
+	cmd.Env = append(os.Environ(), "MYSQL_PWD="+conn.Password)
 
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
