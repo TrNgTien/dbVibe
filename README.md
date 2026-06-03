@@ -14,6 +14,18 @@ Minimal macOS SQL client built with Wails, Go, and React. It focuses on fast dat
 - First-glance table diagnostics: columns, indexes, create table SQL, sample rows
 - `EXPLAIN ANALYZE` panel
 
+## Run the portable app (macOS)
+
+1. Download `build/portable/dbVibe-macos.zip`.
+2. Unzip it.
+3. Open `dbVibe.app`.
+
+If macOS blocks the app after download:
+
+```bash
+xattr -dr com.apple.quarantine dbVibe.app
+```
+
 ## Develop
 
 Install the Wails CLI if it is not already available:
