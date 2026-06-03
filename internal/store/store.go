@@ -2,9 +2,11 @@ package store
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,8 +42,9 @@ type dataFile struct {
 }
 
 type Store struct {
-	appName string
-	path    string
+	appName  string
+	path     string
+	queryDir string
 }
 
 func New(appName string) *Store {
@@ -51,8 +54,9 @@ func New(appName string) *Store {
 	}
 	dir := filepath.Join(configDir, appName)
 	return &Store{
-		appName: appName,
-		path:    filepath.Join(dir, "store.json"),
+		appName:  appName,
+		path:     filepath.Join(dir, "store.json"),
+		queryDir: filepath.Join(dir, "queries"),
 	}
 }
 
@@ -146,7 +150,21 @@ func (s *Store) DeleteConnection(id string) error {
 	data.Queries = slices.DeleteFunc(data.Queries, func(query SavedQuery) bool {
 		return query.ConnectionID == id
 	})
-	return s.write(data)
+	if err := s.write(data); err != nil {
+		return err
+	}
+	queries, err := s.readQueryFiles()
+	if err != nil {
+		return err
+	}
+	for _, query := range queries {
+		if query.ConnectionID == id {
+			if err := s.deleteQueryFile(query.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) ListQueries(connectionID string) ([]SavedQuery, error) {
@@ -154,8 +172,19 @@ func (s *Store) ListQueries(connectionID string) ([]SavedQuery, error) {
 	if err != nil {
 		return nil, err
 	}
-	queries := make([]SavedQuery, 0)
+	fileQueries, err := s.readQueryFiles()
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]SavedQuery, len(data.Queries)+len(fileQueries))
 	for _, query := range data.Queries {
+		byID[query.ID] = query
+	}
+	for _, query := range fileQueries {
+		byID[query.ID] = query
+	}
+	queries := make([]SavedQuery, 0)
+	for _, query := range byID {
 		if query.ConnectionID == connectionID {
 			queries = append(queries, query)
 		}
@@ -183,16 +212,11 @@ func (s *Store) SaveQuery(query SavedQuery) (SavedQuery, error) {
 	if err != nil {
 		return SavedQuery{}, err
 	}
-	replaced := false
-	for i := range data.Queries {
-		if data.Queries[i].ID == query.ID {
-			data.Queries[i] = query
-			replaced = true
-			break
-		}
-	}
-	if !replaced {
-		data.Queries = append(data.Queries, query)
+	data.Queries = slices.DeleteFunc(data.Queries, func(existing SavedQuery) bool {
+		return existing.ID == query.ID
+	})
+	if err := s.writeQueryFile(query); err != nil {
+		return SavedQuery{}, err
 	}
 	return query, s.write(data)
 }
@@ -206,13 +230,25 @@ func randomID() string {
 }
 
 func (s *Store) DeleteQuery(id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("query id is required")
+	}
 	data, err := s.read()
 	if err != nil {
 		return err
 	}
+	legacyCount := len(data.Queries)
 	data.Queries = slices.DeleteFunc(data.Queries, func(query SavedQuery) bool {
 		return query.ID == id
 	})
+	removedLegacy := len(data.Queries) != legacyCount
+	removedFile, err := s.deleteQueryFileIfExists(id)
+	if err != nil {
+		return err
+	}
+	if !removedLegacy && !removedFile {
+		return errors.New("query not found")
+	}
 	return s.write(data)
 }
 
@@ -232,7 +268,22 @@ func (s *Store) AutoDeleteQueries(days int) error {
 		}
 		return t.Before(cutoff)
 	})
-	return s.write(data)
+	if err := s.write(data); err != nil {
+		return err
+	}
+	queries, err := s.readQueryFiles()
+	if err != nil {
+		return err
+	}
+	for _, query := range queries {
+		t, err := time.Parse(time.RFC3339, query.UpdatedAt)
+		if err == nil && t.Before(cutoff) {
+			if err := s.deleteQueryFile(query.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) read() (dataFile, error) {
@@ -252,13 +303,77 @@ func (s *Store) read() (dataFile, error) {
 
 func (s *Store) write(data dataFile) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return err
+		return fmt.Errorf("create store directory: %w", err)
 	}
 	content, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal store: %w", err)
 	}
-	return os.WriteFile(s.path, content, 0o600)
+	if err := os.WriteFile(s.path, content, 0o600); err != nil {
+		return fmt.Errorf("write store: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) readQueryFiles() ([]SavedQuery, error) {
+	entries, err := os.ReadDir(s.queryDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read query directory: %w", err)
+	}
+	queries := make([]SavedQuery, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(s.queryDir, entry.Name()))
+		if err != nil {
+			return nil, fmt.Errorf("read query file %q: %w", entry.Name(), err)
+		}
+		var query SavedQuery
+		if err := json.Unmarshal(content, &query); err != nil {
+			return nil, fmt.Errorf("unmarshal query file %q: %w", entry.Name(), err)
+		}
+		queries = append(queries, query)
+	}
+	return queries, nil
+}
+
+func (s *Store) writeQueryFile(query SavedQuery) error {
+	if err := os.MkdirAll(s.queryDir, 0o700); err != nil {
+		return fmt.Errorf("create query directory: %w", err)
+	}
+	content, err := json.MarshalIndent(query, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal query: %w", err)
+	}
+	if err := os.WriteFile(s.queryPath(query.ID), content, 0o600); err != nil {
+		return fmt.Errorf("write query file: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) deleteQueryFile(id string) error {
+	_, err := s.deleteQueryFileIfExists(id)
+	return err
+}
+
+func (s *Store) deleteQueryFileIfExists(id string) (bool, error) {
+	err := os.Remove(s.queryPath(id))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("delete query file: %w", err)
+	}
+	return true, nil
+}
+
+func (s *Store) queryPath(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return filepath.Join(s.queryDir, hex.EncodeToString(sum[:])+".json")
 }
 
 func firstLine(value string) string {

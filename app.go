@@ -230,6 +230,28 @@ func (a *App) SaveQuery(query store.SavedQuery) (store.SavedQuery, error) {
 	return a.store.SaveQuery(query)
 }
 
+func (a *App) ConfirmDeleteQuery(name string) (bool, error) {
+	if a.ctx == nil {
+		return false, errors.New("app context is nil")
+	}
+	message := "Delete this stored query?"
+	if name = strings.TrimSpace(name); name != "" {
+		message = fmt.Sprintf("Delete stored query %q?", name)
+	}
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "Delete Stored Query",
+		Message:       message,
+		Buttons:       []string{"Delete", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false, fmt.Errorf("confirm query deletion: %w", err)
+	}
+	return selection == "Delete", nil
+}
+
 func (a *App) DeleteQuery(id string) error {
 	return a.store.DeleteQuery(id)
 }

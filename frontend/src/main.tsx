@@ -61,7 +61,20 @@ function savedQueryField(query, camelName, goName) {
   return query?.[camelName] ?? query?.[goName] ?? "";
 }
 
-const AUTO_SELECT_LIMIT = 100;
+const defaultGeneralSettings = {
+  autoDeleteQueryDays: 0,
+  editorFontSize: 14,
+  showLineNumbers: true,
+  highlightCurrentLine: true,
+  wordWrap: true,
+  tabWidth: 4,
+  uppercaseKeywords: false,
+  defaultSelectLimit: 100,
+  queryResultLimit: 500,
+  resultRowDensity: "normal",
+  showAlternateRows: true,
+  nullDisplay: "NULL",
+};
 
 function firstSqlKeyword(sqlText) {
   let i = 0;
@@ -146,7 +159,7 @@ function hasTopLevelLimit(sqlText) {
   return false;
 }
 
-function withDefaultSelectLimit(sqlText) {
+function withDefaultSelectLimit(sqlText, limit = 100) {
   const keyword = firstSqlKeyword(sqlText);
   if (
     (keyword !== "select" && keyword !== "with") ||
@@ -160,7 +173,7 @@ function withDefaultSelectLimit(sqlText) {
   const base = semicolons
     ? trimmed.slice(0, -semicolons.length).trimEnd()
     : trimmed;
-  return `${base} limit ${AUTO_SELECT_LIMIT}${semicolons}`;
+  return `${base} limit ${limit}${semicolons}`;
 }
 
 function App() {
@@ -202,13 +215,15 @@ function App() {
   );
   const [generalSettings, setGeneralSettings] = useLocalStorage(
     "tnt-sql-general-settings",
-    { autoDeleteQueryDays: 0, editorFontSize: 14 },
+    defaultGeneralSettings,
   );
   const [exportedFiles, setExportedFiles] = useLocalStorage(
     "tnt-sql-exported-files",
     [],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState(generalSettings);
+  const [shortcutsDraft, setShortcutsDraft] = useState(shortcuts);
   const [workspaceView, setWorkspaceView] = useState("query");
   const [expandedConnections, setExpandedConnections] = useState({}); // { [connId]: boolean }
   const [expandedObjects, setExpandedObjects] = useState({}); // { [connId_databaseKey]: boolean }
@@ -216,6 +231,23 @@ function App() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isResizing, setIsResizing] = useState(false);
   const editorRef = useRef(null);
+
+  function openSettings() {
+    setSettingsDraft({ ...generalSettings });
+    setShortcutsDraft({ ...shortcuts });
+    setSettingsOpen(true);
+  }
+
+  function closeSettings() {
+    setSettingsOpen(false);
+  }
+
+  function saveSettings() {
+    setGeneralSettings(settingsDraft);
+    setShortcuts(shortcutsDraft);
+    setSettingsOpen(false);
+    showToast("Settings saved");
+  }
 
   useEffect(() => {
     if (!isResizing) return;
@@ -263,6 +295,26 @@ function App() {
 
   useEffect(() => {
     const handler = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        if (settingsOpen) closeSettings();
+        else openSettings();
+        return;
+      }
+      if (settingsOpen) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeSettings();
+        } else if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key.toLowerCase() === "s"
+        ) {
+          event.preventDefault();
+          saveSettings();
+        }
+        return;
+      }
+
       const combo = eventCombo(event);
       if (combo === shortcuts.execute) {
         event.preventDefault();
@@ -283,7 +335,15 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [shortcuts, sqlText, selected]);
+  }, [
+    generalSettings,
+    settingsDraft,
+    settingsOpen,
+    shortcuts,
+    shortcutsDraft,
+    sqlText,
+    selected,
+  ]);
 
   const filteredConnections = useMemo(() => {
     const term = filter.trim().toLowerCase();
@@ -514,21 +574,24 @@ function App() {
         database,
         table.schema,
         table.name,
-        100,
+        generalSettings.defaultSelectLimit ?? 100,
       ),
     );
     setTableDetail(next);
     setShowTableDetail(false);
     setResult(next.sample);
     setSqlText(
-      `select * from ${quoteName(driver, table.schema, table.name)} limit 100`,
+      `select * from ${quoteName(driver, table.schema, table.name)} limit ${generalSettings.defaultSelectLimit ?? 100}`,
     );
   }
 
   async function execute() {
     if (!selected?.id) return;
     const selection = editorRef.current?.getSelection?.();
-    const queryToRun = withDefaultSelectLimit(selection || sqlText);
+    const queryToRun = withDefaultSelectLimit(
+      selection || sqlText,
+      generalSettings.defaultSelectLimit ?? 100,
+    );
     if (!selection && queryToRun !== sqlText) {
       setSqlText(queryToRun);
     }
@@ -538,7 +601,7 @@ function App() {
         selected.id,
         detail?.database || "",
         queryToRun,
-        500,
+        generalSettings.queryResultLimit ?? 500,
       ),
     );
     setResult(next);
@@ -571,15 +634,12 @@ function App() {
 
   async function deleteSavedQuery(query) {
     const queryId = savedQueryField(query, "id", "ID");
+    const queryName = savedQueryField(query, "name", "Name");
     const connectionId =
       savedQueryField(query, "connectionId", "ConnectionID") || selected?.id;
     if (!queryId || !connectionId) return;
-    if (
-      typeof window.confirm === "function" &&
-      !window.confirm("Are you sure you want to delete this query?")
-    ) {
-      return;
-    }
+    const confirmed = await api.call("ConfirmDeleteQuery", queryName);
+    if (!confirmed) return;
 
     const previousQueries = queries;
     setDeletingQueryIds((current) => new Set(current).add(queryId));
@@ -999,8 +1059,8 @@ function App() {
               </div>
             )}
             <button
-              title="Settings"
-              onClick={() => setSettingsOpen(!settingsOpen)}
+              title="Settings (Cmd+,)"
+              onClick={openSettings}
             >
               <Settings size={16} />
             </button>
@@ -1043,10 +1103,12 @@ function App() {
 
         {settingsOpen && (
           <SettingsPanel
-            shortcuts={shortcuts}
-            setShortcuts={setShortcuts}
-            generalSettings={generalSettings}
-            setGeneralSettings={setGeneralSettings}
+            shortcuts={shortcutsDraft}
+            setShortcuts={setShortcutsDraft}
+            generalSettings={settingsDraft}
+            setGeneralSettings={setSettingsDraft}
+            onSave={saveSettings}
+            onCancel={closeSettings}
           />
         )}
 
@@ -1115,6 +1177,7 @@ function App() {
                   detail={detail}
                   editorRef={editorRef}
                   fontSize={generalSettings.editorFontSize || 14}
+                  settings={generalSettings}
                 />
               </section>
             )}
@@ -1133,6 +1196,7 @@ function App() {
                   title="Rows"
                   result={result}
                   onExport={exportQueryResult}
+                  gridSettings={generalSettings}
                   onUpdateTTL={async (seconds) => {
                     const cmd =
                       seconds === -1
@@ -1144,7 +1208,7 @@ function App() {
                         selected?.id,
                         detail?.database || "",
                         cmd,
-                        500,
+                        generalSettings.queryResultLimit ?? 500,
                       ),
                     );
                     execute();
@@ -1154,6 +1218,7 @@ function App() {
                   title="Explain Analyze"
                   result={explain}
                   onExport={exportQueryResult}
+                  gridSettings={generalSettings}
                   onUpdateTTL={() => {}}
                 />
               </section>

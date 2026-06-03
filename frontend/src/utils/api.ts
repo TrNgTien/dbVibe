@@ -144,9 +144,39 @@ const sampleConnections = [
 ];
 
 const demoTables = [
-  { schema: "public", name: "users", type: "table", rows: 1248 },
-  { schema: "public", name: "orders", type: "table", rows: 44819 },
-  { schema: "public", name: "billing_sessions", type: "table", rows: 76 },
+  {
+    schema: "public",
+    name: "users",
+    type: "table",
+    rows: 1248,
+    columns: [
+      { name: "id", type: "uuid" },
+      { name: "email", type: "varchar(255)" },
+      { name: "created_at", type: "timestamp" },
+    ],
+  },
+  {
+    schema: "public",
+    name: "orders",
+    type: "table",
+    rows: 44819,
+    columns: [
+      { name: "id", type: "uuid" },
+      { name: "user_id", type: "uuid" },
+      { name: "total", type: "numeric" },
+    ],
+  },
+  {
+    schema: "public",
+    name: "billing_sessions",
+    type: "table",
+    rows: 76,
+    columns: [
+      { name: "id", type: "uuid" },
+      { name: "user_id", type: "uuid" },
+      { name: "status", type: "varchar(32)" },
+    ],
+  },
 ];
 
 let demoSavedQueries = [
@@ -174,6 +204,7 @@ async function demoCall(name, ...args) {
     return { ...args[0], id: args[0].id || `demo-${Date.now()}` };
   if (name === "DeleteConnection") return null;
   if (name === "AutoDeleteQueries") return null;
+  if (name === "ConfirmDeleteQuery") return true;
   if (name === "DeleteQuery") {
     demoSavedQueries = demoSavedQueries.filter((query) => query.id !== args[0]);
     return null;

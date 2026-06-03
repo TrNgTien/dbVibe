@@ -537,6 +537,19 @@ h3 {
   gap: 10px;
 }
 
+.settingToggle {
+  min-height: 34px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.settingToggle input {
+  width: auto;
+  margin: 0;
+}
+
 label {
   display: grid;
   gap: 5px;
@@ -654,7 +667,7 @@ textarea {
   background: #101318;
   color: #e8edf2;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--editor-font-size, 14px);
 }
 
 .sqlEditor .cm-focused {
@@ -700,6 +713,114 @@ textarea {
 
 .sqlEditor .cm-line {
   padding: 0 12px;
+}
+
+.sqlEditor .cm-panels {
+  background: transparent;
+  border: 0;
+}
+
+.sqlEditor .cm-panel.cm-vscodeSearch {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 18px;
+  width: min(520px, calc(100% - 36px));
+  border: 1px solid #303640;
+  background: #181c22;
+  border-radius: 3px;
+  padding: 4px;
+  color: #c8d0da;
+  box-shadow: 0 5px 16px rgb(0 0 0 / 0.38);
+}
+
+.sqlEditor .cm-searchRow {
+  display: grid;
+  grid-template-columns: 20px minmax(150px, 1fr) auto repeat(6, 24px);
+  align-items: center;
+  gap: 2px;
+}
+
+.sqlEditor .cm-replaceRow {
+  display: none;
+  grid-template-columns: 20px minmax(150px, 1fr) auto auto;
+  margin-top: 3px;
+}
+
+.sqlEditor .cm-replaceVisible .cm-replaceRow {
+  display: grid;
+}
+
+.sqlEditor .cm-replaceRow::before {
+  content: "";
+}
+
+.sqlEditor .cm-vscodeSearch .cm-textfield {
+  min-width: 0;
+  height: 24px;
+  border: 1px solid #3a414c;
+  background: #101318;
+  color: #e8edf2;
+  border-radius: 2px;
+  padding: 2px 5px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.sqlEditor .cm-vscodeSearch .cm-textfield:focus {
+  border-color: #5d86bd;
+}
+
+.sqlEditor .cm-searchCount {
+  min-width: 46px;
+  padding: 0 4px;
+  color: #c2c9d2;
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sqlEditor .cm-searchButton {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #aab3be;
+  border-radius: 3px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.sqlEditor .cm-searchButton:hover,
+.sqlEditor .cm-searchButton.active {
+  background: #2a3039;
+  color: #f0f4f8;
+}
+
+.sqlEditor .cm-searchOption {
+  font-size: 11px;
+}
+
+.sqlEditor .cm-wholeWord {
+  text-decoration: underline;
+}
+
+.sqlEditor .cm-toggleReplace {
+  font-size: 18px;
+}
+
+.sqlEditor .cm-replaceButton {
+  width: auto;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.sqlEditor .cm-searchMatch {
+  background: rgb(234 184 83 / 0.38);
+}
+
+.sqlEditor .cm-searchMatch-selected {
+  background: rgb(234 184 83 / 0.72);
 }
 
 .cm-tooltip {
@@ -1296,6 +1417,24 @@ pre {
   background: #202835;
 }
 
+.resultPanel.alternateRows tbody tr:nth-child(even) td {
+  background: #151a21;
+}
+
+.resultPanel.alternateRows .clickableRow:hover td {
+  background: #202835;
+}
+
+.resultPanel.resultDensity-compact th,
+.resultPanel.resultDensity-compact td {
+  padding: 4px 7px;
+}
+
+.resultPanel.resultDensity-comfortable th,
+.resultPanel.resultDensity-comfortable td {
+  padding: 10px 9px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1396,6 +1535,38 @@ td {
 
 .rowDetail {
   min-height: 220px;
+}
+
+.rowDetailToolbar {
+  border-bottom: 1px solid #2c333d;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rowDetailToolbar > span {
+  color: #95a0ad;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.rowFieldSearch {
+  width: min(360px, 100%);
+  border: 1px solid #333a44;
+  background: #101318;
+  border-radius: 7px;
+  padding: 0 9px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowFieldSearch input {
+  border: 0;
+  background: transparent;
+  padding: 7px 0;
 }
 
 .rowFields {
@@ -1536,9 +1707,87 @@ td {
   to { transform: translateY(0); opacity: 1; }
 }
 
-.settingsPanel {
-  margin-bottom: 12px;
+.settingsBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.48);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.settingsWindow {
+  width: min(760px, calc(100vw - 80px));
+  max-height: min(760px, calc(100vh - 80px));
+  border: 1px solid #3a4553;
+  background: #171c23;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 28px 90px rgb(0 0 0 / 0.58);
+}
+
+.settingsWindowHead,
+.settingsWindowFoot {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.settingsWindowHead {
+  border-bottom: 1px solid #2c333d;
+}
+
+.settingsWindowHead h2,
+.settingsSection h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.settingsWindowHead h2 {
+  font-size: 15px;
+}
+
+.settingsWindowHead span {
+  display: block;
+  margin-top: 3px;
+  color: #7f8a97;
+  font-size: 11px;
+}
+
+.settingsWindowBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.settingsSection {
+  border: 1px solid #2c333d;
+  background: #141920;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.settingsSection h3 {
+  border-bottom: 1px solid #2c333d;
+  padding: 9px 12px;
+  color: #dce3eb;
+  font-size: 12px;
+}
+
+.settingsWindowFoot {
+  border-top: 1px solid #2c333d;
+  justify-content: flex-end;
 }
 
 .empty {

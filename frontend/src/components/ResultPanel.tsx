@@ -1,10 +1,19 @@
-import React, { useState, useRef, useEffect } from "react";
-import { X, Copy, Download } from "lucide-react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import { X, Copy, Download, Search } from "lucide-react";
 
-export function ResultPanel({ title, result, onUpdateTTL, onExport }) {
+export function ResultPanel({
+  title,
+  result,
+  onUpdateTTL,
+  onExport,
+  gridSettings = {},
+}) {
   const [selectedRow, setSelectedRow] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const rowDensity = gridSettings.resultRowDensity || "normal";
+  const nullDisplay = gridSettings.nullDisplay || "NULL";
+  const showAlternateRows = gridSettings.showAlternateRows ?? true;
 
   // Add click outside handler for export menu
   useEffect(() => {
@@ -24,6 +33,12 @@ export function ResultPanel({ title, result, onUpdateTTL, onExport }) {
 
   if (!result) return null;
   const isExplain = title.toLowerCase().includes("explain");
+  const formatCellValue = (value) =>
+    value === null || value === undefined || value === "NULL" ? (
+      <span className="nullValue">{nullDisplay}</span>
+    ) : (
+      value
+    );
 
   const handleExport = async (format: "csv" | "json") => {
     setExportMenuOpen(false);
@@ -85,7 +100,9 @@ export function ResultPanel({ title, result, onUpdateTTL, onExport }) {
   };
 
   return (
-    <section className="panel resultPanel">
+    <section
+      className={`panel resultPanel resultDensity-${rowDensity}${showAlternateRows ? " alternateRows" : ""}`}
+    >
       <div className="panelHead">
         <h2>{title}</h2>
         <div className="rowActions">
@@ -173,7 +190,7 @@ export function ResultPanel({ title, result, onUpdateTTL, onExport }) {
                   onClick={() => setSelectedRow({ row, index })}
                 >
                   {result.columns.map((column) => (
-                    <td key={column}>{row[column]}</td>
+                    <td key={column}>{formatCellValue(row[column])}</td>
                   ))}
                 </tr>
               ))}
@@ -239,6 +256,34 @@ export function TableInspector({ detail }) {
 
 function RowDetailModal({ title, row, isExplain, onClose }) {
   const [viewMode, setViewMode] = useState("json");
+  const [fieldSearch, setFieldSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const filteredEntries = useMemo(() => {
+    const query = fieldSearch.trim().toLowerCase();
+    const entries = Object.entries(row);
+    if (!query) return entries;
+    return entries.filter(([key]) => key.toLowerCase().includes(query));
+  }, [fieldSearch, row]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      } else if (
+        !isExplain &&
+        event.key.toLowerCase() === "f" &&
+        (event.metaKey || event.ctrlKey)
+      ) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    searchInputRef.current?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isExplain, onClose]);
 
   const isJson = (val) => {
     if (typeof val !== "string") return false;
@@ -265,7 +310,7 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
 
   const getJsonRow = () => {
     const jsonRow = {};
-    for (const [k, v] of Object.entries(row)) {
+    for (const [k, v] of filteredEntries) {
       if (typeof v === "string" && isJson(v)) {
         try {
           jsonRow[k] = JSON.parse(v);
@@ -314,6 +359,23 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
             <X size={18} />
           </button>
         </div>
+        {!isExplain && (
+          <div className="rowDetailToolbar">
+            <label className="rowFieldSearch">
+              <Search size={15} />
+              <input
+                ref={searchInputRef}
+                value={fieldSearch}
+                onChange={(event) => setFieldSearch(event.target.value)}
+                placeholder="Search fields..."
+                aria-label="Search fields"
+              />
+            </label>
+            <span>
+              {filteredEntries.length} of {Object.keys(row).length} fields
+            </span>
+          </div>
+        )}
         <div className="modalBody rowDetail">
           {isExplain ? (
             <pre className="explainValue">{Object.values(row)[0]}</pre>
@@ -333,7 +395,7 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
             </div>
           ) : (
             <div className="rowFields">
-              {Object.entries(row).map(([key, value]) => (
+              {filteredEntries.map(([key, value]) => (
                 <div key={key} className="rowField">
                   <div className="rowFieldHeader">
                     <strong>{key}</strong>
@@ -350,6 +412,9 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
                   <div className="rowFieldValue">{formatValue(value)}</div>
                 </div>
               ))}
+              {!filteredEntries.length && (
+                <p className="empty">No fields match your search.</p>
+              )}
             </div>
           )}
         </div>

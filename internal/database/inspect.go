@@ -66,6 +66,67 @@ func mysqlTables(ctx context.Context, db *sql.DB, database string) ([]TableInfo,
 	return scanTableInfo(rows)
 }
 
+func attachPostgresColumns(ctx context.Context, db *sql.DB, tables []TableInfo) error {
+	rows, err := db.QueryContext(ctx, `
+		select table_schema, table_name, column_name, data_type,
+			is_nullable = 'YES', coalesce(column_default, ''), ordinal_position
+	from information_schema.columns
+		where table_schema not in ('pg_catalog', 'information_schema')
+		order by table_schema, table_name, ordinal_position`)
+	if err != nil {
+		return fmt.Errorf("query postgres columns: %w", err)
+	}
+	defer rows.Close()
+	if err := attachColumns(rows, tables); err != nil {
+		return fmt.Errorf("attach postgres columns: %w", err)
+	}
+	return nil
+}
+
+func attachMySQLColumns(ctx context.Context, db *sql.DB, database string, tables []TableInfo) error {
+	rows, err := db.QueryContext(ctx, `
+		select table_schema, table_name, column_name, column_type,
+			is_nullable = 'YES', coalesce(column_default, ''), ordinal_position
+		from information_schema.columns
+		where table_schema = ?
+		order by table_name, ordinal_position`, database)
+	if err != nil {
+		return fmt.Errorf("query mysql columns: %w", err)
+	}
+	defer rows.Close()
+	if err := attachColumns(rows, tables); err != nil {
+		return fmt.Errorf("attach mysql columns: %w", err)
+	}
+	return nil
+}
+
+func attachColumns(rows *sql.Rows, tables []TableInfo) error {
+	tableIndexes := make(map[string]int, len(tables))
+	for index, table := range tables {
+		tableIndexes[table.Schema+"\x00"+table.Name] = index
+	}
+
+	for rows.Next() {
+		var schema, table string
+		var column Column
+		if err := rows.Scan(
+			&schema,
+			&table,
+			&column.Name,
+			&column.Type,
+			&column.Nullable,
+			&column.Default,
+			&column.Ordinal,
+		); err != nil {
+			return err
+		}
+		if index, ok := tableIndexes[schema+"\x00"+table]; ok {
+			tables[index].Columns = append(tables[index].Columns, column)
+		}
+	}
+	return rows.Err()
+}
+
 func postgresRoutines(ctx context.Context, db *sql.DB) ([]RoutineInfo, error) {
 	rows, err := db.QueryContext(ctx, `
 		select n.nspname, p.proname,

@@ -35,10 +35,11 @@ type DatabaseInfo struct {
 }
 
 type TableInfo struct {
-	Schema string `json:"schema"`
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Rows   int64  `json:"rows"`
+	Schema  string   `json:"schema"`
+	Name    string   `json:"name"`
+	Type    string   `json:"type"`
+	Rows    int64    `json:"rows"`
+	Columns []Column `json:"columns,omitempty"`
 }
 
 type RoutineInfo struct {
@@ -172,6 +173,9 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 		}
 		tables, err = postgresTables(ctx, db)
 		if err == nil {
+			err = attachPostgresColumns(ctx, db, tables)
+		}
+		if err == nil {
 			routines, err = postgresRoutines(ctx, db)
 		}
 	} else {
@@ -180,6 +184,9 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 			return ConnectionDetail{}, err
 		}
 		tables, err = mysqlTables(ctx, db, conn.Database)
+		if err == nil {
+			err = attachMySQLColumns(ctx, db, conn.Database, tables)
+		}
 		if err == nil {
 			routines, err = mysqlRoutines(ctx, db, conn.Database)
 		}
@@ -191,7 +198,7 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 }
 
 func InspectTable(ctx context.Context, db *sql.DB, conn store.Connection, schema, table string, limit int) (TableDetail, error) {
-	if limit <= 0 || limit > 500 {
+	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
 	if conn.Driver == "postgres" {
