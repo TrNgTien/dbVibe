@@ -246,12 +246,12 @@ func (a *App) GetQueryInsights(connectionID, databaseName string, limit int) (da
 	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
 		conn.Database = strings.TrimSpace(databaseName)
 	}
-	if conn.Driver != "mysql" && conn.Driver != "postgres" && conn.Driver != "redis" {
+	if conn.Driver != "mysql" && conn.Driver != "postgres" && conn.Driver != "redis" && conn.Driver != "mongodb" {
 		return database.QueryInsights{}, fmt.Errorf("query insights are not supported for %s", conn.Driver)
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
 	defer cancel()
-	if conn.Driver == "redis" {
+	if conn.Driver == "redis" || conn.Driver == "mongodb" {
 		return database.InspectQueryInsights(ctx, nil, conn, limit)
 	}
 	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
@@ -503,9 +503,10 @@ func (a *App) ListBinlogs(connectionID string) ([]string, error) {
 	if conn.Driver != "mysql" {
 		return nil, errors.New("binlogs are only supported for MySQL")
 	}
-	db, err := database.Open(conn)
+	binlogConn := binlogConnection(conn)
+	db, err := database.Open(binlogConn)
 	if err != nil {
-		return nil, fmt.Errorf("open connection: %w", err)
+		return nil, fmt.Errorf("open binlog connection: %w", err)
 	}
 	defer db.Close()
 
@@ -544,6 +545,7 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 	if conn.Driver != "mysql" {
 		return "", errors.New("binlogs are only supported for MySQL")
 	}
+	binlogConn := binlogConnection(conn)
 	mysqlbinlogPath, err := findMySQLBinlog()
 	if err != nil {
 		return "", err
@@ -561,16 +563,19 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 
 	args := []string{
 		"--read-from-remote-server",
-		"--host=" + conn.Host,
-		"--port=" + strconv.Itoa(conn.Port),
-		"--user=" + conn.User,
+		"--host=" + binlogConn.Host,
+		"--port=" + strconv.Itoa(binlogConn.Port),
+		"--user=" + binlogConn.User,
 		"--base64-output=DECODE-ROWS",
 		"-v",
 		logName,
 	}
+	if binlogConn.UseTLS {
+		args = append([]string{"--ssl-mode=REQUIRED"}, args...)
+	}
 
 	cmd := exec.Command(mysqlbinlogPath, args...)
-	cmd.Env = append(os.Environ(), "MYSQL_PWD="+conn.Password)
+	cmd.Env = append(os.Environ(), "MYSQL_PWD="+binlogConn.Password)
 
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
@@ -591,14 +596,52 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 	}
 
 	if err != nil {
-		output := strings.TrimSpace(string(content))
-		if output == "" {
-			return "", fmt.Errorf("mysqlbinlog failed: %w", err)
-		}
-		return "", fmt.Errorf("mysqlbinlog failed: %w\n%s", err, output)
+		return "", mysqlbinlogError(err, string(content), binlogConn.Host)
 	}
 
 	return string(content), nil
+}
+
+func binlogConnection(conn store.Connection) store.Connection {
+	if conn.BinlogHost != "" {
+		conn.Host = conn.BinlogHost
+	}
+	if conn.BinlogPort != 0 {
+		conn.Port = conn.BinlogPort
+	}
+	return conn
+}
+
+func mysqlbinlogError(err error, output, host string) error {
+	diagnostic := mysqlbinlogDiagnostic(output)
+	if strings.Contains(strings.ToLower(host), "proxysql") &&
+		strings.Contains(diagnostic, "Got error reading packet from server: Lost connection") {
+		return fmt.Errorf(
+			"ProxySQL at %s closed the binary log stream. Edit this connection and set Binlog host to a direct MySQL server endpoint",
+			host,
+		)
+	}
+	if diagnostic == "" {
+		return fmt.Errorf("mysqlbinlog failed: %w", err)
+	}
+	return fmt.Errorf("mysqlbinlog failed: %w\n%s", err, diagnostic)
+}
+
+func mysqlbinlogDiagnostic(output string) string {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(trimmed, "proper term is pseudo_replica_mode") ||
+			strings.Contains(trimmed, "make the statement usable on server versions") ||
+			strings.Contains(trimmed, "SET @@SESSION.PSEUDO_SLAVE_MODE") ||
+			strings.Contains(trimmed, "SET @OLD_COMPLETION_TYPE") ||
+			trimmed == "DELIMITER /*!*/;" {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return strings.TrimSpace(strings.Join(filtered, "\n"))
 }
 
 func findMySQLBinlog() (string, error) {

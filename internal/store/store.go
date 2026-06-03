@@ -15,17 +15,19 @@ import (
 )
 
 type Connection struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Driver   string `json:"driver"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Database string `json:"database"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	SSLMode  string `json:"sslMode"`
-	UseTLS   bool   `json:"useTLS"`
-	IsPinned bool   `json:"isPinned"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Driver     string `json:"driver"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	BinlogHost string `json:"binlogHost,omitempty"`
+	BinlogPort int    `json:"binlogPort,omitempty"`
+	Database   string `json:"database"`
+	User       string `json:"user"`
+	Password   string `json:"password"`
+	SSLMode    string `json:"sslMode"`
+	UseTLS     bool   `json:"useTLS"`
+	IsPinned   bool   `json:"isPinned"`
 }
 
 type SavedQuery struct {
@@ -94,6 +96,7 @@ func (s *Store) SaveConnection(conn Connection) (Connection, error) {
 	conn.Name = strings.TrimSpace(conn.Name)
 	conn.Driver = strings.TrimSpace(conn.Driver)
 	conn.Host = strings.TrimSpace(conn.Host)
+	conn.BinlogHost = strings.TrimSpace(conn.BinlogHost)
 	conn.Database = strings.TrimSpace(conn.Database)
 	conn.User = strings.TrimSpace(conn.User)
 	conn.SSLMode = strings.TrimSpace(conn.SSLMode)
@@ -119,6 +122,12 @@ func (s *Store) SaveConnection(conn Connection) (Connection, error) {
 		case "mongodb":
 			conn.Port = 27017
 		}
+	}
+	if conn.Driver != "mysql" || conn.BinlogHost == "" {
+		conn.BinlogHost = ""
+		conn.BinlogPort = 0
+	} else if conn.BinlogPort == 0 {
+		conn.BinlogPort = conn.Port
 	}
 	if conn.ID == "" {
 		conn.ID = randomID()

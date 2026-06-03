@@ -80,6 +80,8 @@ func InspectQueryInsights(ctx context.Context, db *sql.DB, conn store.Connection
 		insights, err = mysqlQueryInsights(ctx, db, conn.Database, limit)
 	case "redis":
 		insights, err = redisQueryInsights(ctx, conn, limit)
+	case "mongodb":
+		insights, err = mongoQueryInsights(ctx, conn, limit)
 	default:
 		return QueryInsights{}, fmt.Errorf("query insights are not supported for %s", conn.Driver)
 	}

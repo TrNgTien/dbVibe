@@ -46,6 +46,8 @@ const defaultConnection = {
   driver: "mysql",
   host: "localhost",
   port: 3306,
+  binlogHost: "",
+  binlogPort: 0,
   database: "",
   user: "",
   password: "",
@@ -1389,7 +1391,8 @@ function App() {
                   disabled={
                     selected?.driver !== "mysql" &&
                     selected?.driver !== "postgres" &&
-                    selected?.driver !== "redis"
+                    selected?.driver !== "redis" &&
+                    selected?.driver !== "mongodb"
                   }
                 >
                   <Gauge size={14} /> Insights

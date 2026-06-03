@@ -122,6 +122,8 @@ export function TraceLogPage({ connection, onExport }) {
     });
   }, [actionFilter, events, search]);
   const stats = useMemo(() => traceStats(events), [events]);
+  const binlogHost = connection?.binlogHost || connection?.host;
+  const binlogPort = connection?.binlogPort || connection?.port;
 
   useEffect(() => {
     setBinlogs([]);
@@ -185,7 +187,7 @@ export function TraceLogPage({ connection, onExport }) {
           <div>
             <h2>Trace Log</h2>
             <small>
-              {driverLabel(connection?.driver)} · {connection?.host}:{connection?.port}
+              {driverLabel(connection?.driver)} · {binlogHost}:{binlogPort}
             </small>
           </div>
           <div className="rowActions">

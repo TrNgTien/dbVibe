@@ -107,6 +107,24 @@ func TestDeleteConnectionDeletesQueryFiles(t *testing.T) {
 	}
 }
 
+func TestSaveConnectionBinlogEndpoint(t *testing.T) {
+	s := newTestStore(t)
+
+	saved, err := s.SaveConnection(Connection{
+		Name:       "ProxySQL",
+		Driver:     "mysql",
+		Host:       "proxysql.example.internal",
+		Port:       3306,
+		BinlogHost: " mysql-primary.example.internal ",
+	})
+	if err != nil {
+		t.Fatalf("SaveConnection() error = %v", err)
+	}
+	if saved.BinlogHost != "mysql-primary.example.internal" || saved.BinlogPort != 3306 {
+		t.Fatalf("SaveConnection() binlog endpoint = %s:%d", saved.BinlogHost, saved.BinlogPort)
+	}
+}
+
 func writeTestData(t *testing.T, s *Store, data dataFile) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {

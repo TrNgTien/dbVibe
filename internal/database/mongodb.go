@@ -158,6 +158,170 @@ func ExecuteMongoDB(ctx context.Context, conn store.Connection, commandText stri
 	return result, err
 }
 
+func mongoQueryInsights(ctx context.Context, conn store.Connection, limit int) (QueryInsights, error) {
+	insights := newQueryInsights("mongodb_query_stats")
+	client, err := newMongoClient(conn)
+	if err != nil {
+		return QueryInsights{}, err
+	}
+	defer client.Disconnect(context.Background())
+	if err := client.Ping(ctx, nil); err != nil {
+		return QueryInsights{}, fmt.Errorf("mongodb ping failed: %w", err)
+	}
+
+	insights.Resources = mongoResourceInsight(ctx, client)
+	pipeline := mongo.Pipeline{
+		bson.D{{Key: "$queryStats", Value: bson.D{}}},
+		bson.D{{Key: "$addFields", Value: bson.D{{
+			Key: "__dbvibeTotalTime",
+			Value: bson.D{{Key: "$ifNull", Value: bson.A{
+				"$metrics.totalExecMicros.sum",
+				bson.D{{Key: "$multiply", Value: bson.A{"$metrics.workingTimeMillis", 1000}}},
+			}}},
+		}}}},
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "__dbvibeTotalTime", Value: -1}}}},
+		bson.D{{Key: "$limit", Value: limit}},
+	}
+	cursor, err := client.Database("admin").Aggregate(ctx, pipeline)
+	if err != nil {
+		insights.Message = "MongoDB query statistics are unavailable. $queryStats requires a supported MongoDB version, queryStats feature configuration, and sufficient privileges."
+		return insights, nil
+	}
+	defer cursor.Close(ctx)
+
+	var rows []bson.M
+	if err := cursor.All(ctx, &rows); err != nil {
+		return QueryInsights{}, fmt.Errorf("read mongodb query statistics: %w", err)
+	}
+	insights.Queries = parseMongoQueryStats(rows)
+	finalizeQueryInsights(&insights)
+	return insights, nil
+}
+
+func mongoResourceInsight(ctx context.Context, client *mongo.Client) ResourceInsight {
+	resource := ResourceInsight{
+		Source:           "mongodb",
+		MemoryLimitLabel: "host memory",
+		CPUMessage:       "MongoDB CPU telemetry is unavailable on this server.",
+	}
+	var status bson.M
+	if err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "serverStatus", Value: 1}}).Decode(&status); err == nil {
+		if memory := bsonMap(status["mem"]); memory != nil {
+			resource.MemoryUsedBytes = bsonInt64(memory["resident"]) * 1024 * 1024
+			resource.MemoryAvailable = resource.MemoryUsedBytes > 0
+		}
+		if extra := bsonMap(status["extra_info"]); extra != nil {
+			userMicros := bsonFloat64(extra["user_time_us"])
+			systemMicros := bsonFloat64(extra["system_time_us"])
+			if totalMicros := userMicros + systemMicros; totalMicros > 0 {
+				resource.CPUAvailable = true
+				resource.CPUTotalSeconds = totalMicros / 1_000_000
+			}
+		}
+	}
+	var hostInfo bson.M
+	if err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "hostInfo", Value: 1}}).Decode(&hostInfo); err == nil {
+		if system := bsonMap(hostInfo["system"]); system != nil {
+			memoryMB := bsonInt64(system["memLimitMB"])
+			if memoryMB == 0 {
+				memoryMB = bsonInt64(system["memSizeMB"])
+			}
+			resource.MemoryLimitBytes = memoryMB * 1024 * 1024
+		}
+	}
+	return resource
+}
+
+func parseMongoQueryStats(rows []bson.M) []QueryInsight {
+	items := make([]QueryInsight, 0, len(rows))
+	for _, row := range rows {
+		key := bsonMap(row["key"])
+		metrics := bsonMap(row["metrics"])
+		if key == nil || metrics == nil {
+			continue
+		}
+		queryShape := key["queryShape"]
+		queryJSON, err := bson.MarshalExtJSON(queryShape, false, false)
+		if err != nil {
+			continue
+		}
+		calls := bsonInt64(metrics["execCount"])
+		totalMicros := float64(mongoMetricSum(metrics["totalExecMicros"]))
+		if totalMicros == 0 {
+			totalMicros = bsonFloat64(metrics["workingTimeMillis"]) * 1000
+		}
+		item := QueryInsight{
+			Query:        string(queryJSON),
+			Calls:        calls,
+			TotalTimeMS:  totalMicros / 1000,
+			Rows:         mongoMetricSum(metrics["docsReturned"]),
+			RowsExamined: mongoMetricSum(metrics["docsExamined"]),
+		}
+		if calls > 0 {
+			item.AverageTimeMS = item.TotalTimeMS / float64(calls)
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func mongoMetricSum(value any) int64 {
+	metric := bsonMap(value)
+	if metric == nil {
+		return bsonInt64(value)
+	}
+	return bsonInt64(metric["sum"])
+}
+
+func bsonMap(value any) bson.M {
+	switch value := value.(type) {
+	case bson.M:
+		return value
+	case bson.D:
+		result := make(bson.M, len(value))
+		for _, element := range value {
+			result[element.Key] = element.Value
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func bsonInt64(value any) int64 {
+	switch value := value.(type) {
+	case int:
+		return int64(value)
+	case int32:
+		return int64(value)
+	case int64:
+		return value
+	case float32:
+		return int64(value)
+	case float64:
+		return int64(value)
+	default:
+		return 0
+	}
+}
+
+func bsonFloat64(value any) float64 {
+	switch value := value.(type) {
+	case int:
+		return float64(value)
+	case int32:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case float32:
+		return float64(value)
+	case float64:
+		return value
+	default:
+		return 0
+	}
+}
+
 func newMongoClient(conn store.Connection) (*mongo.Client, error) {
 	clientOptions := options.Client().ApplyURI(mongoURI(conn))
 	if conn.UseTLS {

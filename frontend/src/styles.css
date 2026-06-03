@@ -559,6 +559,19 @@ h3 {
   margin: 0;
 }
 
+.formSection {
+  grid-column: span 2;
+  display: grid;
+  gap: 3px;
+  padding-top: 2px;
+  color: #d7dde5;
+  font-size: 12px;
+}
+
+.formSection span {
+  color: #7f8996;
+}
+
 label {
   display: grid;
   gap: 5px;

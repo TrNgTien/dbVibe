@@ -38,6 +38,15 @@ function summaryCards(summary, driver) {
       ["Cache hit ratio", formatPercent(summary?.cacheHitRatio)],
     ];
   }
+  if (driver === "mongodb") {
+    return [
+      ["Tracked query shapes", formatNumber(summary?.statementCount)],
+      ["Total executions", formatNumber(summary?.calls)],
+      ["Total execution time", formatDuration(summary?.totalTimeMs)],
+      ["Average execution", formatDuration(summary?.averageTimeMs)],
+      ["Documents examined", formatNumber(summary?.rowsExamined)],
+    ];
+  }
   return [
     ["Tracked statements", formatNumber(summary?.statementCount)],
     ["Total calls", formatNumber(summary?.calls)],
@@ -294,13 +303,21 @@ export function QueryInsightsPage({ connection, database }) {
                   <thead>
                     <tr>
                       <th>Impact</th>
-                      <th>{connection?.driver === "redis" ? "Command" : "Query"}</th>
+                      <th>
+                        {connection?.driver === "redis"
+                          ? "Command"
+                          : connection?.driver === "mongodb"
+                            ? "Query shape"
+                            : "Query"}
+                      </th>
                       <th>Calls</th>
                       <th>Total time</th>
                       <th>Average</th>
                       <th>
                         {connection?.driver === "redis"
                           ? "Failed"
+                          : connection?.driver === "mongodb"
+                            ? "Examined"
                           : connection?.driver === "mysql"
                             ? "Examined"
                             : "Rows"}
@@ -308,6 +325,8 @@ export function QueryInsightsPage({ connection, database }) {
                       <th>
                         {connection?.driver === "redis"
                           ? "Rejected"
+                          : connection?.driver === "mongodb"
+                            ? "Returned"
                           : connection?.driver === "mysql"
                             ? "Disk temp"
                             : "Cache hit"}
@@ -348,6 +367,8 @@ export function QueryInsightsPage({ connection, database }) {
                           {formatNumber(
                             connection?.driver === "redis"
                               ? item.failedCalls
+                              : connection?.driver === "mongodb"
+                                ? item.rowsExamined
                               : connection?.driver === "mysql"
                                 ? item.rowsExamined
                                 : item.rows,
@@ -356,6 +377,8 @@ export function QueryInsightsPage({ connection, database }) {
                         <td>
                           {connection?.driver === "redis"
                             ? formatNumber(item.rejectedCalls)
+                            : connection?.driver === "mongodb"
+                              ? formatNumber(item.rows)
                             : connection?.driver === "mysql"
                               ? formatNumber(item.tempDiskTables)
                               : formatPercent(item.cacheHitRatio)}
@@ -509,7 +532,11 @@ function QueryInsightModal({ item, insights, connection, database, onClose }) {
         <div className="insightModalBody">
           <div className="traceCodeBlock">
             <div className="traceCodeLabel">
-              {connection?.driver === "redis" ? "Command" : "Query"}
+              {connection?.driver === "redis"
+                ? "Command"
+                : connection?.driver === "mongodb"
+                  ? "Query shape"
+                  : "Query"}
             </div>
             <pre>{item.query}</pre>
           </div>

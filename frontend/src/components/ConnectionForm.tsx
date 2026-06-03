@@ -65,6 +65,33 @@ export function ConnectionForm({ draft, setDraft }) {
           onChange={(e) => patch({ port: Number(e.target.value) })}
         />
       </label>
+      {draft.driver === "mysql" && (
+        <>
+          <div className="formSection">
+            <strong>Binlog endpoint</strong>
+            <span>Optional direct MySQL server used when Host is ProxySQL.</span>
+          </div>
+          <label>
+            Binlog host
+            <input
+              {...connectionInputProps}
+              placeholder={draft.host || "Same as Host"}
+              value={draft.binlogHost || ""}
+              onChange={(e) => patch({ binlogHost: e.target.value })}
+            />
+          </label>
+          <label>
+            Binlog port
+            <input
+              {...connectionInputProps}
+              type="number"
+              placeholder={String(draft.port || 3306)}
+              value={draft.binlogPort || ""}
+              onChange={(e) => patch({ binlogPort: Number(e.target.value) })}
+            />
+          </label>
+        </>
+      )}
       <label>
         {draft.driver === "redis" ? "Database index" : "Database"}
         <input
