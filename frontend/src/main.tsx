@@ -66,13 +66,20 @@ function savedQueryField(query, camelName, goName) {
 
 const SQL_SAMPLE_COMMAND = "select * from ";
 const REDIS_SAMPLE_COMMAND = "GET key";
+const MONGODB_SAMPLE_COMMAND = '{"find":"collection","filter":{}}';
 
 function sampleCommand(driver) {
-  return driver === "redis" ? REDIS_SAMPLE_COMMAND : SQL_SAMPLE_COMMAND;
+  if (driver === "redis") return REDIS_SAMPLE_COMMAND;
+  if (driver === "mongodb") return MONGODB_SAMPLE_COMMAND;
+  return SQL_SAMPLE_COMMAND;
 }
 
 function isSampleCommand(command) {
-  return command === SQL_SAMPLE_COMMAND || command === REDIS_SAMPLE_COMMAND;
+  return (
+    command === SQL_SAMPLE_COMMAND ||
+    command === REDIS_SAMPLE_COMMAND ||
+    command === MONGODB_SAMPLE_COMMAND
+  );
 }
 
 function quoteRedisArg(value) {
@@ -783,6 +790,28 @@ function App() {
       setShowTableDetail(false);
       return;
     }
+    if (driver === "mongodb") {
+      const command = JSON.stringify({
+        find: table.name,
+        filter: {},
+        limit: generalSettings.defaultSelectLimit ?? 100,
+      });
+      const next = await run("collection detail", () =>
+        api.call(
+          "GetDatabaseTableDetail",
+          connId,
+          database,
+          table.schema,
+          table.name,
+          generalSettings.defaultSelectLimit ?? 100,
+        ),
+      );
+      setTableDetail(next);
+      setShowTableDetail(false);
+      setResult(next.sample);
+      setSqlText(command);
+      return;
+    }
     const next = await run("table detail", () =>
       api.call(
         "GetDatabaseTableDetail",
@@ -841,6 +870,8 @@ function App() {
             editorRef.current?.getCurrentLine?.(),
             sqlText,
           )
+        : selected.driver === "mongodb"
+          ? selection || sqlText
         : withDefaultSelectLimit(
             selection || sqlText,
             generalSettings.defaultSelectLimit ?? 100,
@@ -869,7 +900,10 @@ function App() {
     if (selected.driver === "redis") {
       setLastRedisCommand(queryToRun);
     }
-    const queryTable = findQueryTable(queryToRun, detail?.tables || []);
+    const queryTable =
+      selected.driver === "mongodb"
+        ? null
+        : findQueryTable(queryToRun, detail?.tables || []);
     if (queryTable) {
       try {
         const nextTableDetail = await api.call(

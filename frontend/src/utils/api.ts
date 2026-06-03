@@ -6,6 +6,7 @@ export function defaultPort(driver) {
   if (driver === "postgres") return 5432;
   if (driver === "redis") return 6379;
   if (driver === "elasticsearch") return 9200;
+  if (driver === "mongodb") return 27017;
   return 3306;
 }
 
@@ -13,6 +14,7 @@ export function driverLabel(driver) {
   if (driver === "postgres") return "PostgreSQL";
   if (driver === "redis") return "Redis";
   if (driver === "elasticsearch") return "Elasticsearch";
+  if (driver === "mongodb") return "MongoDB";
   return "MySQL";
 }
 
@@ -53,6 +55,7 @@ export function normalizeObjectType(type) {
 
 export function quoteName(driver, schema, table) {
   if (driver === "mysql") return `\`${table}\``;
+  if (driver === "mongodb") return table;
   return `"${schema}"."${table}"`;
 }
 

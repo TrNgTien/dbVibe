@@ -43,3 +43,13 @@ export function ElasticsearchIcon(props) {
     </svg>
   );
 }
+
+export function MongoDBIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" {...props}>
+      <path fill="#47A248" d="M64 4c-8 18-29 31-29 65 0 25 14 43 29 55 15-12 29-30 29-55C93 35 72 22 64 4z" />
+      <path fill="#3F9142" d="M64 4v120c15-12 29-30 29-55C93 35 72 22 64 4z" />
+      <path fill="#fff" d="M61 34h6v76h-6z" />
+    </svg>
+  );
+}

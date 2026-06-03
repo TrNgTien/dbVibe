@@ -188,6 +188,7 @@ function ConnectionTreeInner({
 }) {
   const isRedis = driver === "redis";
   const isElasticsearch = driver === "elasticsearch";
+  const isMongoDB = driver === "mongodb";
 
   if (isElasticsearch) {
     return null;
@@ -337,13 +338,15 @@ function ConnectionTreeInner({
             )}
           </div>
           <Table2 size={14} />
-          <span>Tables</span>
+          <span>{isMongoDB ? "Collections" : "Tables"}</span>
           <small>{tables.length}</small>
         </button>
         {expanded[`${connId}_tables`] && (
           <div className="treeChildren">
             {tables.length === 0 && (
-              <div className="treeEmpty">No tables found</div>
+              <div className="treeEmpty">
+                {isMongoDB ? "No collections found" : "No tables found"}
+              </div>
             )}
             {tables.map((table) => (
               <button

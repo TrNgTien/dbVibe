@@ -67,7 +67,7 @@ func (a *App) Connect(connectionID string) (database.ConnectionDetail, error) {
 	if err != nil {
 		return database.ConnectionDetail{}, err
 	}
-	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" || conn.Driver == "mongodb" {
 		ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
 		defer cancel()
 		detail, err := database.InspectExternalConnection(ctx, conn)
@@ -93,7 +93,7 @@ func (a *App) ConnectDatabase(connectionID, databaseName string) (database.Conne
 	if strings.TrimSpace(databaseName) != "" {
 		conn.Database = strings.TrimSpace(databaseName)
 	}
-	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" || conn.Driver == "mongodb" {
 		ctx, cancel := context.WithTimeout(a.ctx, 10*time.Second)
 		defer cancel()
 		detail, err := database.InspectExternalConnection(ctx, conn)
@@ -127,7 +127,7 @@ func (a *App) GetCompletions(connectionID, databaseName, text string, position i
 	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
 	defer cancel()
 
-	if conn.Driver == "redis" || conn.Driver == "elasticsearch" {
+	if conn.Driver == "redis" || conn.Driver == "elasticsearch" || conn.Driver == "mongodb" {
 		return database.GetCompletions(ctx, nil, conn, text, position)
 	}
 
@@ -148,6 +148,9 @@ func (a *App) GetDatabaseTableDetail(connectionID, databaseName, schema, table s
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 12*time.Second)
 	defer cancel()
+	if conn.Driver == "mongodb" {
+		return database.InspectMongoCollection(ctx, conn, table, limit)
+	}
 	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
 	if err != nil {
 		return database.TableDetail{}, err
@@ -177,6 +180,9 @@ func (a *App) ExecuteDatabase(connectionID, databaseName, sqlText string, limit 
 	}
 	if conn.Driver == "elasticsearch" {
 		return database.QueryResult{}, errors.New("Elasticsearch command execution is not implemented")
+	}
+	if conn.Driver == "mongodb" {
+		return database.ExecuteMongoDB(ctx, conn, sqlText, limit)
 	}
 	var db *sql.DB
 	conn, db, err = a.openSession(ctx, connectionID, conn, conn.Database)
@@ -462,6 +468,18 @@ func connectionTerminalCommand(conn store.Connection) (string, error) {
 		command := fmt.Sprintf("curl --include %s://%s:%s/", scheme, host, port)
 		if conn.User != "" {
 			command = fmt.Sprintf("curl --include --user %s %s://%s:%s/", user, scheme, host, port)
+		}
+		return command, nil
+	case "mongodb":
+		command := fmt.Sprintf("mongosh --host %s --port %s", host, port)
+		if conn.User != "" {
+			command += " --username " + user + " --password"
+		}
+		if conn.UseTLS {
+			command += " --tls"
+		}
+		if conn.Database != "" {
+			command += " " + databaseName
 		}
 		return command, nil
 	default:

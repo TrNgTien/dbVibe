@@ -34,6 +34,7 @@ export function ConnectionForm({ draft, setDraft }) {
             { id: "postgres", name: "PostgreSQL" },
             { id: "redis", name: "Redis" },
             { id: "elasticsearch", name: "Elasticsearch" },
+            { id: "mongodb", name: "MongoDB" },
           ].map((d) => (
             <button
               key={d.id}

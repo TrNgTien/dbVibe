@@ -7,6 +7,7 @@ import {
   indentWithTab,
 } from "@codemirror/commands";
 import { MySQL, PostgreSQL, sql } from "@codemirror/lang-sql";
+import { json } from "@codemirror/lang-json";
 import { indentUnit, StreamLanguage } from "@codemirror/language";
 import {
   SearchQuery,
@@ -260,6 +261,8 @@ export function SqlEditor({
       ? redisLanguage 
       : detail?.driver === "elasticsearch" 
         ? elasticsearchLanguage 
+        : detail?.driver === "mongodb"
+          ? json()
         : sql({ dialect });
 
     const view = new EditorView({
@@ -281,7 +284,7 @@ export function SqlEditor({
           autocompletion({
             activateOnTyping: true,
             override: [
-              detail?.driver === "redis" || detail?.driver === "elasticsearch"
+              detail?.driver === "redis" || detail?.driver === "elasticsearch" || detail?.driver === "mongodb"
                 ? createBackendCompletionSource(detail)
                 : createSqlCompletionSource(detail, { uppercaseKeywords })
             ],

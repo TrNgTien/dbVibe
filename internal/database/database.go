@@ -121,6 +121,8 @@ func TestConnection(ctx context.Context, conn store.Connection) error {
 	case "elasticsearch":
 		_, err := elasticsearchRequest(ctx, conn, "/_cluster/health")
 		return err
+	case "mongodb":
+		return TestMongoDB(ctx, conn)
 	default:
 		return fmt.Errorf("unsupported driver %q", conn.Driver)
 	}
@@ -149,6 +151,8 @@ func InspectExternalConnection(ctx context.Context, conn store.Connection) (Conn
 			Databases: []DatabaseInfo{{Name: databaseName}},
 			Tables:    tables,
 		}, nil
+	case "mongodb":
+		return InspectMongoDB(ctx, conn)
 	default:
 		return ConnectionDetail{}, fmt.Errorf("unsupported external driver %q", conn.Driver)
 	}

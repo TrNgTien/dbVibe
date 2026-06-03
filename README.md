@@ -1,14 +1,14 @@
 # dbVibe
 
-Minimal macOS SQL client built with Wails, Go, and React. It focuses on fast database debugging for PostgreSQL and MySQL without Electron.
+Minimal macOS database client built with Wails, Go, and React. It focuses on fast database debugging without Electron.
 
 ## Features
 
 - Stored connection dashboard
-- PostgreSQL and MySQL connection forms with SSL/TLS options
-- Execute SQL commands
+- PostgreSQL, MySQL, MongoDB, Redis, and Elasticsearch connection forms
+- Execute SQL, MongoDB JSON commands, and Redis commands
 - Save and reopen query snippets per connection
-- CodeMirror SQL editor with autocomplete
+- CodeMirror query editor with autocomplete
 - Customizable shortcuts stored in local storage
 - Table browser with row preview
 - First-glance table diagnostics: columns, indexes, create table SQL, sample rows
