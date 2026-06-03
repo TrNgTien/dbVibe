@@ -12,6 +12,7 @@ import {
   Pencil,
   PowerOff,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { DriverLogo, StatusDot } from "./common";
 import { driverLabel, normalizeObjectType } from "../utils/api";
@@ -59,6 +60,7 @@ export function SidebarTree({
   onToggleObject,
   onOpenDatabase,
   onOpenTable,
+  onDeleteRedisKey,
   onNewQuery,
   onContextMenu,
 }) {
@@ -155,6 +157,7 @@ export function SidebarTree({
                     onToggle={(key) => onToggleObject(conn.id, key)}
                     onOpenDatabase={(db) => onOpenDatabase(db, conn.id)}
                     onOpenTable={(table) => onOpenTable(table, conn.id)}
+                    onDeleteRedisKey={(key) => onDeleteRedisKey?.(key, conn.id)}
                     onNewQuery={onNewQuery}
                   />
                 )}
@@ -180,6 +183,7 @@ function ConnectionTreeInner({
   onToggle,
   onOpenDatabase,
   onOpenTable,
+  onDeleteRedisKey,
   onNewQuery,
 }) {
   const isRedis = driver === "redis";
@@ -245,16 +249,39 @@ function ConnectionTreeInner({
                 <div className="treeEmpty">No keys found</div>
               )}
               {tables.map((key) => (
-                <button
+                <div
                   key={key.name}
-                  className="treeItem"
+                  className="treeItem redisKeyItem"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onOpenTable(key)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onOpenTable(key);
+                    }
+                  }}
                 >
                   <div className="treeIndent" />
                   <Table2 size={14} />
-                  <span>{key.name}</span>
+                  <span className="treeKeyLabel" title={key.name}>
+                    {key.name}
+                  </span>
                   <small>{key.type}</small>
-                </button>
+                  <button
+                    type="button"
+                    className="iconButton treeRowAction"
+                    title={`Delete ${key.name}`}
+                    aria-label={`Delete ${key.name}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      onDeleteRedisKey?.(key);
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}

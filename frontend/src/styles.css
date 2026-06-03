@@ -971,6 +971,38 @@ textarea {
   color: #7f8996;
 }
 
+.redisKeyItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.redisKeyItem .treeKeyLabel {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.redisKeyItem .treeRowAction {
+  flex: 0 0 auto;
+  margin-left: 2px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: #7f8996;
+}
+
+.redisKeyItem:hover .treeRowAction {
+  color: #e8edf2;
+}
+
 .treeChevron {
   color: #8f98a4;
 }

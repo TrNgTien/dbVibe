@@ -1,7 +1,9 @@
-.PHONY: help all start dev run build frontend frontend-build deps install-wails doctor
+.PHONY: help all start dev run build build-portable frontend frontend-build deps install-wails doctor
 
 WAILS_VERSION ?= v2.10.2
 WAILS ?= go run github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
+PORTABLE_DIR ?= build/portable
+PORTABLE_ZIP ?= $(PORTABLE_DIR)/dbVibe-macos.zip
 
 export GOCACHE ?= $(CURDIR)/.gocache
 export GOMODCACHE ?= $(CURDIR)/.gomodcache
@@ -11,6 +13,7 @@ help:
 	@echo "Targets:"
 	@echo "  make start          Run the Wails desktop app in dev mode"
 	@echo "  make build          Build the macOS desktop app"
+	@echo "  make build-portable Build a portable macOS zip"
 	@echo "  make frontend       Run the Vite frontend only"
 	@echo "  make frontend-build Build the Vite frontend only"
 	@echo "  make deps           Install/download Go and frontend dependencies"
@@ -28,6 +31,11 @@ dev:
 
 build:
 	env -u GOROOT $(WAILS) build -clean &&  cp -R build/bin/dbVibe.app /Applications/
+
+build-portable:
+	env -u GOROOT $(WAILS) build -clean -platform darwin/universal
+	mkdir -p $(PORTABLE_DIR)
+	ditto -c -k --sequesterRsrc --keepParent build/bin/dbVibe.app $(PORTABLE_ZIP)
 
 frontend:
 	npm --prefix frontend run dev

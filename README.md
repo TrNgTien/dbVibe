@@ -36,6 +36,15 @@ cd sql-gui
 env -u GOROOT wails build
 ```
 
+Build a portable macOS zip (shareable without installation):
+
+```bash
+cd sql-gui
+make build-portable
+```
+
+The zip is created at `build/portable/dbVibe-macos.zip`. Recipients can unzip and run `dbVibe.app`.
+
 If your shell has GVM variables loaded, `env -u GOROOT` avoids mixing Homebrew Go 1.25 with a Go 1.24 GVM root.
 
 ## Frontend Only

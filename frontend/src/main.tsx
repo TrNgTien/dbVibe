@@ -62,8 +62,27 @@ function savedQueryField(query, camelName, goName) {
   return query?.[camelName] ?? query?.[goName] ?? "";
 }
 
+const SQL_SAMPLE_COMMAND = "select * from ";
+const REDIS_SAMPLE_COMMAND = "GET key";
+
+function sampleCommand(driver) {
+  return driver === "redis" ? REDIS_SAMPLE_COMMAND : SQL_SAMPLE_COMMAND;
+}
+
+function isSampleCommand(command) {
+  return command === SQL_SAMPLE_COMMAND || command === REDIS_SAMPLE_COMMAND;
+}
+
+function quoteRedisArg(value) {
+  const text = String(value ?? "");
+  if (!text || (/^\S+$/.test(text) && !text.includes('"'))) {
+    return text;
+  }
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
 function redisKeyCommand(key) {
-  const name = `"${String(key.name || "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+  const name = quoteRedisArg(key.name || "");
   switch (key.type) {
     case "hash":
       return `HGETALL ${name}`;
@@ -83,10 +102,12 @@ function redisKeyCommand(key) {
 function redisCommandToRun(selection, currentLine, text) {
   if (selection?.trim()) return selection.trim();
   if (currentLine?.trim()) return currentLine.trim();
-  return String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || "";
+  return (
+    String(text || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) || ""
+  );
 }
 
 const defaultGeneralSettings = {
@@ -215,7 +236,7 @@ function App() {
   const [showTableDetail, setShowTableDetail] = useState(false);
   const [queries, setQueries] = useState([]);
   const [deletingQueryIds, setDeletingQueryIds] = useState(() => new Set());
-  const [sqlText, setSqlText] = useState("select * from ");
+  const [sqlText, setSqlText] = useState(SQL_SAMPLE_COMMAND);
   const [result, setResult] = useState(null);
   const [explain, setExplain] = useState(null);
   const [filter, setFilter] = useState("");
@@ -554,6 +575,9 @@ function App() {
   async function connect(conn = selected) {
     if (!conn?.id) return;
     setSelected(conn);
+    setSqlText((current) =>
+      isSampleCommand(current) ? sampleCommand(conn.driver) : current,
+    );
     setCreatingConnection(false);
     setEditingConnection(false);
     setDraft({ ...defaultConnection, ...conn });
@@ -625,6 +649,21 @@ function App() {
     }
   }
 
+  async function refreshRedisConnection(connId, databaseName) {
+    const conn = connections.find((item) => item.id === connId);
+    if (!conn) return null;
+    const next = await run("refresh redis connection", () =>
+      api.call("ConnectDatabase", connId, databaseName || conn.database || ""),
+    );
+    setDetails((current) => ({ ...current, [connId]: next }));
+    if (connId === selected?.id) {
+      setDetail(next);
+      setDraft((current) => ({ ...current, database: next.database }));
+      setConnectionStatus("connected");
+    }
+    return next;
+  }
+
   async function openTable(table, connId = selected?.id) {
     if (!connId) return;
     const conn = connections.find((c) => c.id === connId);
@@ -670,6 +709,36 @@ function App() {
     setSqlText(
       `select * from ${quoteName(driver, table.schema, table.name)} limit ${generalSettings.defaultSelectLimit ?? 100}`,
     );
+  }
+
+  async function deleteRedisKey(key, connId = selected?.id) {
+    if (!connId || !key?.name) return;
+    const conn = connections.find((item) => item.id === connId);
+    if (!conn) return;
+    const currentDetail =
+      connId === selected?.id ? detail || details[connId] : details[connId];
+    const keyDatabase =
+      typeof key?.schema === "string" && key.schema.trim()
+        ? key.schema.trim()
+        : "";
+    const databaseName =
+      keyDatabase || currentDetail?.database || conn.database || "";
+    const displayName = key.name;
+    const confirmed = await api.call(
+      "ConfirmDeleteRedisKey",
+      displayName,
+      databaseName,
+    );
+    if (!confirmed) return;
+
+    await run("delete redis key", () =>
+      api.call("DeleteRedisKey", connId, databaseName, displayName),
+    );
+    if (result?.redisKey === displayName) {
+      setResult(null);
+      setLastRedisCommand("");
+    }
+    await refreshRedisConnection(connId, databaseName);
   }
 
   async function execute() {
@@ -1036,7 +1105,9 @@ function App() {
               <div className="sidebarActions">
                 <button
                   className="iconButton"
-                  onClick={refreshConnections}
+                  onClick={() =>
+                    selected ? connect(selected) : refreshConnections()
+                  }
                   title="Refresh"
                 >
                   <RefreshCw size={15} />
@@ -1089,13 +1160,16 @@ function App() {
                 onToggleObject={toggleObject}
                 onOpenDatabase={connectDatabase}
                 onOpenTable={openTable}
+                onDeleteRedisKey={deleteRedisKey}
                 onNewQuery={() => editorRef.current?.focus()}
                 onContextMenu={openConnectionMenu}
               />
               <SavedQueries
                 queries={queries}
                 deletingQueryIds={deletingQueryIds}
-                onOpen={(query) => setSqlText(savedQueryField(query, "sql", "SQL"))}
+                onOpen={(query) =>
+                  setSqlText(savedQueryField(query, "sql", "SQL"))
+                }
                 onDelete={deleteSavedQuery}
               />
             </section>
@@ -1107,7 +1181,9 @@ function App() {
                   closeConnectedConnection(connectionMenu.conn)
                 }
                 onEditConnection={() => editConnection(connectionMenu.conn)}
-                onOpenTerminal={() => openConnectionTerminal(connectionMenu.conn)}
+                onOpenTerminal={() =>
+                  openConnectionTerminal(connectionMenu.conn)
+                }
                 onTogglePin={() => {
                   togglePin(connectionMenu.conn);
                   setConnectionMenu(null);
@@ -1185,10 +1261,7 @@ function App() {
             >
               <Terminal size={16} />
             </button>
-            <button
-              title="Settings (Cmd+,)"
-              onClick={openSettings}
-            >
+            <button title="Settings (Cmd+,)" onClick={openSettings}>
               <Settings size={16} />
             </button>
             <button

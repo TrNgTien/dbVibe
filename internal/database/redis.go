@@ -106,6 +106,22 @@ func ExecuteRedis(ctx context.Context, conn store.Connection, sqlText string) (Q
 	return result, nil
 }
 
+func DeleteRedisKey(ctx context.Context, conn store.Connection, key string) error {
+	client := newRedisClient(conn)
+	defer client.Close()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("redis ping failed: %w", err)
+	}
+	if strings.TrimSpace(key) == "" {
+		return fmt.Errorf("redis key is empty")
+	}
+	if err := client.Del(ctx, key).Err(); err != nil {
+		return fmt.Errorf("delete redis key %q: %w", key, err)
+	}
+	return nil
+}
+
 func InspectRedis(ctx context.Context, conn store.Connection) (ConnectionDetail, error) {
 	client := newRedisClient(conn)
 	defer client.Close()

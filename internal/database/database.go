@@ -271,6 +271,13 @@ func redisDatabase(value string) string {
 	if value == "" {
 		return "0"
 	}
+	if strings.HasPrefix(strings.ToLower(value), "db") {
+		trimmed := strings.TrimSpace(value[2:])
+		if trimmed == "" {
+			return "0"
+		}
+		return trimmed
+	}
 	return value
 }
 

@@ -186,6 +186,25 @@ func (a *App) ExecuteDatabase(connectionID, databaseName, sqlText string, limit 
 	return database.Execute(ctx, db, conn.Driver, sqlText, limit)
 }
 
+func (a *App) DeleteRedisKey(connectionID, databaseName, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return errors.New("redis key is empty")
+	}
+	conn, _, err := a.openStored(connectionID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	if conn.Driver != "redis" {
+		return fmt.Errorf("delete redis key is not supported for %s", conn.Driver)
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	defer cancel()
+	return database.DeleteRedisKey(ctx, conn, key)
+}
+
 func (a *App) ExplainAnalyze(connectionID, sqlText string) (database.QueryResult, error) {
 	return a.ExplainAnalyzeDatabase(connectionID, "", sqlText)
 }
@@ -240,6 +259,14 @@ func (a *App) SaveQuery(query store.SavedQuery) (store.SavedQuery, error) {
 	return a.store.SaveQuery(query)
 }
 
+func confirmRedisKeyDeleteMessage(key string, databaseName string) string {
+	db := strings.TrimSpace(databaseName)
+	if db == "" {
+		db = "0"
+	}
+	return fmt.Sprintf("Delete Redis key %q from db%s?", strings.TrimSpace(key), db)
+}
+
 func (a *App) ConfirmDeleteQuery(name string) (bool, error) {
 	if a.ctx == nil {
 		return false, errors.New("app context is nil")
@@ -258,6 +285,24 @@ func (a *App) ConfirmDeleteQuery(name string) (bool, error) {
 	})
 	if err != nil {
 		return false, fmt.Errorf("confirm query deletion: %w", err)
+	}
+	return selection == "Delete", nil
+}
+
+func (a *App) ConfirmDeleteRedisKey(key string, databaseName string) (bool, error) {
+	if a.ctx == nil {
+		return false, errors.New("app context is nil")
+	}
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "Delete Redis Key",
+		Message:       confirmRedisKeyDeleteMessage(key, databaseName),
+		Buttons:       []string{"Delete", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false, fmt.Errorf("confirm redis key deletion: %w", err)
 	}
 	return selection == "Delete", nil
 }
