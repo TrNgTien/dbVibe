@@ -73,7 +73,9 @@ export function SidebarTree({
           ...table,
           objectType: normalizeObjectType(table.type),
         }));
-        const tables = allObjects.filter((table) => table.objectType === "table");
+        const tables = allObjects.filter(
+          (table) => table.objectType === "table",
+        );
         const views =
           detail?.views ||
           allObjects.filter((table) => table.objectType === "view");
@@ -104,7 +106,11 @@ export function SidebarTree({
                   }
                 }}
               >
-                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {isExpanded ? (
+                  <ChevronDown size={14} />
+                ) : (
+                  <ChevronRight size={14} />
+                )}
               </span>
               <button
                 type="button"
@@ -112,10 +118,14 @@ export function SidebarTree({
                 onClick={() => onSelectConnection(conn)}
               >
                 <span className="connectionName">
-                  <StatusDot status={isConnected ? "connected" : "disconnected"} />
+                  <StatusDot
+                    status={isConnected ? "connected" : "disconnected"}
+                  />
                   <DriverLogo driver={conn.driver} />
                   {conn.name}
-                  {conn.isPinned && <Pin size={12} fill="currentColor" className="pinIcon" />}
+                  {conn.isPinned && (
+                    <Pin size={12} fill="currentColor" className="pinIcon" />
+                  )}
                 </span>
                 <small>{driverLabel(conn.driver)}</small>
               </button>
@@ -171,23 +181,11 @@ function ConnectionTreeInner({
   const isElasticsearch = driver === "elasticsearch";
 
   if (isRedis || isElasticsearch) {
-    return (
-      <button className="treeItem" onClick={onNewQuery}>
-        <div className="treeIndent" />
-        <Code2 size={14} />
-        <span>Query workspace</span>
-      </button>
-    );
+    return null;
   }
 
   return (
     <>
-      <button className="treeItem" onClick={onNewQuery}>
-        <div className="treeIndent" />
-        <Code2 size={14} />
-        <span>Query workspace</span>
-      </button>
-
       {databases.length > 1 && (
         <div className="treeBranch">
           <button className="treeItem" onClick={() => onToggle("databases")}>

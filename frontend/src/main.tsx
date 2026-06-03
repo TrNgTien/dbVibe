@@ -6,6 +6,7 @@ import {
   ChevronsDown,
   Copy,
   Database,
+  FileDown,
   Play,
   Plus,
   RefreshCw,
@@ -29,6 +30,7 @@ import {
 } from "./utils/api";
 import { StartupPage } from "./pages/StartupPage";
 import { TraceLogPage } from "./pages/TraceLogPage";
+import { ExportsPage } from "./pages/ExportsPage";
 import { ResultPanel, TableInspector } from "./components/ResultPanel";
 import { ConnectionForm } from "./components/ConnectionForm";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -55,6 +57,112 @@ const defaultShortcuts = {
   focusEditor: "Meta+K",
 };
 
+function savedQueryField(query, camelName, goName) {
+  return query?.[camelName] ?? query?.[goName] ?? "";
+}
+
+const AUTO_SELECT_LIMIT = 100;
+
+function firstSqlKeyword(sqlText) {
+  let i = 0;
+  while (i < sqlText.length) {
+    const char = sqlText[i];
+    const next = sqlText[i + 1];
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+    if (char === "-" && next === "-") {
+      i = sqlText.indexOf("\n", i + 2);
+      if (i === -1) return "";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      const end = sqlText.indexOf("*/", i + 2);
+      if (end === -1) return "";
+      i = end + 2;
+      continue;
+    }
+    const match = sqlText.slice(i).match(/^[a-z]+/i);
+    return match?.[0].toLowerCase() || "";
+  }
+  return "";
+}
+
+function hasTopLevelLimit(sqlText) {
+  let depth = 0;
+  let quote = "";
+
+  for (let i = 0; i < sqlText.length; i++) {
+    const char = sqlText[i];
+    const next = sqlText[i + 1];
+
+    if (quote) {
+      if (char === quote) {
+        if (sqlText[i + 1] === quote) {
+          i++;
+        } else {
+          quote = "";
+        }
+      } else if (char === "\\" && quote !== "`") {
+        i++;
+      }
+      continue;
+    }
+
+    if (char === "-" && next === "-") {
+      i = sqlText.indexOf("\n", i + 2);
+      if (i === -1) return false;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      const end = sqlText.indexOf("*/", i + 2);
+      if (end === -1) return false;
+      i = end + 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "(") {
+      depth++;
+      continue;
+    }
+    if (char === ")") {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (
+      depth === 0 &&
+      sqlText.slice(i, i + 5).toLowerCase() === "limit" &&
+      !/[a-z0-9_]/i.test(sqlText[i - 1] || "") &&
+      !/[a-z0-9_]/i.test(sqlText[i + 5] || "")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function withDefaultSelectLimit(sqlText) {
+  const keyword = firstSqlKeyword(sqlText);
+  if (
+    (keyword !== "select" && keyword !== "with") ||
+    hasTopLevelLimit(sqlText)
+  ) {
+    return sqlText;
+  }
+
+  const trimmed = sqlText.trimEnd();
+  const semicolons = trimmed.match(/;+$/)?.[0] || "";
+  const base = semicolons
+    ? trimmed.slice(0, -semicolons.length).trimEnd()
+    : trimmed;
+  return `${base} limit ${AUTO_SELECT_LIMIT}${semicolons}`;
+}
+
 function App() {
   const [connections, setConnections] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -62,8 +170,9 @@ function App() {
   const [detail, setDetail] = useState(null); // Keep for the currently active/selected connection (query workspace)
   const [details, setDetails] = useState({}); // details: { [connId]: detailData }
   const [tableDetail, setTableDetail] = useState(null);
-  const [showTableDetail, setShowTableDetail] = useState(true);
+  const [showTableDetail, setShowTableDetail] = useState(false);
   const [queries, setQueries] = useState([]);
+  const [deletingQueryIds, setDeletingQueryIds] = useState(() => new Set());
   const [sqlText, setSqlText] = useState("select * from ");
   const [result, setResult] = useState(null);
   const [explain, setExplain] = useState(null);
@@ -72,7 +181,9 @@ function App() {
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [exportProgress, setExportProgress] = useState(null);
   const toastTimeoutRef = useRef(null);
+  const exportToastTimeoutRef = useRef(null);
 
   const showToast = (message) => {
     setToast(message);
@@ -92,6 +203,10 @@ function App() {
   const [generalSettings, setGeneralSettings] = useLocalStorage(
     "tnt-sql-general-settings",
     { autoDeleteQueryDays: 0, editorFontSize: 14 },
+  );
+  const [exportedFiles, setExportedFiles] = useLocalStorage(
+    "tnt-sql-exported-files",
+    [],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [workspaceView, setWorkspaceView] = useState("query");
@@ -403,7 +518,7 @@ function App() {
       ),
     );
     setTableDetail(next);
-    setShowTableDetail(true);
+    setShowTableDetail(false);
     setResult(next.sample);
     setSqlText(
       `select * from ${quoteName(driver, table.schema, table.name)} limit 100`,
@@ -413,7 +528,10 @@ function App() {
   async function execute() {
     if (!selected?.id) return;
     const selection = editorRef.current?.getSelection?.();
-    const queryToRun = selection || sqlText;
+    const queryToRun = withDefaultSelectLimit(selection || sqlText);
+    if (!selection && queryToRun !== sqlText) {
+      setSqlText(queryToRun);
+    }
     const next = await run("execute", () =>
       api.call(
         "ExecuteDatabase",
@@ -449,6 +567,117 @@ function App() {
       api.call("SaveQuery", { connectionId: selected.id, name, sql: sqlText }),
     );
     setQueries(await api.call("ListSavedQueries", selected.id));
+  }
+
+  async function deleteSavedQuery(query) {
+    const queryId = savedQueryField(query, "id", "ID");
+    const connectionId =
+      savedQueryField(query, "connectionId", "ConnectionID") || selected?.id;
+    if (!queryId || !connectionId) return;
+    if (
+      typeof window.confirm === "function" &&
+      !window.confirm("Are you sure you want to delete this query?")
+    ) {
+      return;
+    }
+
+    const previousQueries = queries;
+    setDeletingQueryIds((current) => new Set(current).add(queryId));
+    setQueries((current) =>
+      current.filter((item) => savedQueryField(item, "id", "ID") !== queryId),
+    );
+    try {
+      await run("delete query", () => api.call("DeleteQuery", queryId));
+      const latest = (await api.call("ListSavedQueries", connectionId)) || [];
+      setQueries(latest);
+      showToast("Query deleted");
+    } catch (err) {
+      setQueries(previousQueries);
+      throw err;
+    } finally {
+      setDeletingQueryIds((current) => {
+        const next = new Set(current);
+        next.delete(queryId);
+        return next;
+      });
+    }
+  }
+
+  async function exportQueryResult({
+    content,
+    format,
+    defaultFilename,
+    filterName,
+    filterPattern,
+    rows,
+  }) {
+    if (exportToastTimeoutRef.current) {
+      clearTimeout(exportToastTimeoutRef.current);
+    }
+    setExportProgress({
+      message: "Preparing export",
+      progress: 25,
+      status: "active",
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    setExportProgress({
+      message: "Choose export location",
+      progress: 45,
+      status: "active",
+    });
+
+    try {
+      const path = await api.call(
+        "ExportQueryResult",
+        content,
+        defaultFilename,
+        filterName,
+        filterPattern,
+      );
+      if (!path) {
+        setExportProgress({
+          message: "Export canceled",
+          progress: 100,
+          status: "done",
+        });
+        exportToastTimeoutRef.current = setTimeout(
+          () => setExportProgress(null),
+          1800,
+        );
+        return;
+      }
+
+      const name = String(path).split(/[\\/]/).pop() || defaultFilename;
+      const item = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name,
+        path,
+        format,
+        rows,
+        createdAt: new Date().toISOString(),
+      };
+      setExportedFiles((current) => [item, ...current].slice(0, 100));
+      setExportProgress({
+        message: `Exported ${name}`,
+        progress: 100,
+        status: "done",
+      });
+      exportToastTimeoutRef.current = setTimeout(
+        () => setExportProgress(null),
+        3200,
+      );
+    } catch (err) {
+      setExportProgress({
+        message: err?.message || "Export failed",
+        progress: 100,
+        status: "error",
+      });
+      exportToastTimeoutRef.current = setTimeout(
+        () => setExportProgress(null),
+        4500,
+      );
+      throw err;
+    }
   }
 
   function selectConnection(conn) {
@@ -686,15 +915,9 @@ function App() {
               />
               <SavedQueries
                 queries={queries}
-                onOpen={(query) => setSqlText(query.sql)}
-                onDelete={async (id) => {
-                  if (confirm("Are you sure you want to delete this query?")) {
-                    await run("delete query", () =>
-                      api.call("DeleteQuery", id),
-                    );
-                    setQueries(await api.call("ListSavedQueries", selected.id));
-                  }
-                }}
+                deletingQueryIds={deletingQueryIds}
+                onOpen={(query) => setSqlText(savedQueryField(query, "sql", "SQL"))}
+                onDelete={deleteSavedQuery}
               />
             </section>
             {connectionMenu && (
@@ -767,6 +990,12 @@ function App() {
                 >
                   Trace Log
                 </button>
+                <button
+                  className={workspaceView === "exports" ? "active" : ""}
+                  onClick={() => setWorkspaceView("exports")}
+                >
+                  <FileDown size={14} /> Exports
+                </button>
               </div>
             )}
             <button
@@ -797,6 +1026,20 @@ function App() {
         {error && <div className="error">{error}</div>}
         {loading && <div className="loading">Running {loading}...</div>}
         {toast && <div className="toast">{toast}</div>}
+        {exportProgress && (
+          <div className={`toast exportToast ${exportProgress.status}`}>
+            <div className="exportToastHead">
+              <span>{exportProgress.message}</span>
+              <small>{exportProgress.progress}%</small>
+            </div>
+            <div className="exportProgressTrack">
+              <div
+                className="exportProgressBar"
+                style={{ width: `${exportProgress.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {settingsOpen && (
           <SettingsPanel
@@ -889,6 +1132,7 @@ function App() {
                 <ResultPanel
                   title="Rows"
                   result={result}
+                  onExport={exportQueryResult}
                   onUpdateTTL={async (seconds) => {
                     const cmd =
                       seconds === -1
@@ -909,6 +1153,7 @@ function App() {
                 <ResultPanel
                   title="Explain Analyze"
                   result={explain}
+                  onExport={exportQueryResult}
                   onUpdateTTL={() => {}}
                 />
               </section>
@@ -917,6 +1162,13 @@ function App() {
 
         {!editingConnectionDetails && workspaceView === "trace" && (
           <TraceLogPage connection={selected} />
+        )}
+
+        {!editingConnectionDetails && workspaceView === "exports" && (
+          <ExportsPage
+            exports={exportedFiles}
+            onClear={() => setExportedFiles([])}
+          />
         )}
       </main>
     </div>

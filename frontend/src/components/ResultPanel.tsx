@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { X, Copy, Download } from "lucide-react";
-import { api } from "../utils/api";
 
-export function ResultPanel({ title, result, onUpdateTTL }) {
+export function ResultPanel({ title, result, onUpdateTTL, onExport }) {
   const [selectedRow, setSelectedRow] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -72,13 +71,14 @@ export function ResultPanel({ title, result, onUpdateTTL }) {
         filterPattern = "*.csv";
       }
 
-      await api.call(
-        "ExportQueryResult",
+      await onExport?.({
+        format,
         content,
         defaultFilename,
         filterName,
         filterPattern,
-      );
+        rows: result.rows.length,
+      });
     } catch (e) {
       console.error("Export failed:", e);
     }
@@ -238,7 +238,7 @@ export function TableInspector({ detail }) {
 }
 
 function RowDetailModal({ title, row, isExplain, onClose }) {
-  const [viewMode, setViewMode] = useState("list"); // 'list' or 'json'
+  const [viewMode, setViewMode] = useState("json");
 
   const isJson = (val) => {
     if (typeof val !== "string") return false;

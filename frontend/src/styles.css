@@ -1104,6 +1104,104 @@ pre {
   background: #1b2431;
 }
 
+.exportsPage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.exportsPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.exportsPanel .panelHead small {
+  display: block;
+  margin-top: 4px;
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.exportList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.exportItem {
+  min-height: 70px;
+  border: 1px solid #2f3946;
+  background: #151a21;
+  border-radius: 8px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.exportIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  border: 1px solid #333a44;
+  background: #1c2128;
+  display: grid;
+  place-items: center;
+  color: #9ec3ff;
+}
+
+.exportMeta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.exportMeta strong,
+.exportMeta span,
+.exportMeta small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exportMeta span {
+  color: #c4ccd6;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.exportMeta small {
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.exportActions {
+  display: flex;
+  gap: 6px;
+}
+
+.exportActions button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.exportsEmpty {
+  flex: 1;
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+}
+
 .traceAction {
   border: 1px solid #46515f;
   border-radius: 999px;
@@ -1394,6 +1492,43 @@ td {
   background: #1e3626;
   color: #85d996;
   animation: slideIn 0.2s ease-out forwards;
+}
+
+.exportToast {
+  display: grid;
+  gap: 7px;
+}
+
+.exportToast.error {
+  border-color: #8f3434;
+  background: #321d1d;
+  color: #ffb4b4;
+}
+
+.exportToastHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.exportToastHead small {
+  color: currentColor;
+  opacity: 0.8;
+}
+
+.exportProgressTrack {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.exportProgressBar {
+  height: 100%;
+  border-radius: inherit;
+  background: #85d996;
+  transition: width 0.18s ease;
 }
 
 @keyframes slideIn {

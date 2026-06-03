@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -263,6 +265,40 @@ func (a *App) ExportQueryResult(content string, defaultFilename string, filterNa
 	}
 
 	return filepath, nil
+}
+
+func (a *App) OpenExportedFile(filePath string) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return errors.New("file path is empty")
+	}
+	return openPath(filePath)
+}
+
+func (a *App) RevealExportedFile(filePath string) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return errors.New("file path is empty")
+	}
+	switch goruntime.GOOS {
+	case "darwin":
+		return exec.Command("open", "-R", filePath).Start()
+	case "windows":
+		return exec.Command("explorer", "/select,", filePath).Start()
+	default:
+		return openPath(filepath.Dir(filePath))
+	}
+}
+
+func openPath(filePath string) error {
+	switch goruntime.GOOS {
+	case "darwin":
+		return exec.Command("open", filePath).Start()
+	case "windows":
+		return exec.Command("cmd", "/c", "start", "", filePath).Start()
+	default:
+		return exec.Command("xdg-open", filePath).Start()
+	}
 }
 
 func (a *App) AutoDeleteQueries(days int) error {

@@ -149,6 +149,16 @@ const demoTables = [
   { schema: "public", name: "billing_sessions", type: "table", rows: 76 },
 ];
 
+let demoSavedQueries = [
+  {
+    id: "q1",
+    connectionId: "demo-pg",
+    name: "Slow users lookup",
+    sql: "select * from users where created_at < now() - interval '1 year'\norder by created_at desc\nlimit 100;",
+    updatedAt: new Date().toISOString(),
+  },
+];
+
 export const api = {
   async call(name, ...args) {
     const app = (window as any)?.go?.main?.App;
@@ -164,7 +174,12 @@ async function demoCall(name, ...args) {
     return { ...args[0], id: args[0].id || `demo-${Date.now()}` };
   if (name === "DeleteConnection") return null;
   if (name === "AutoDeleteQueries") return null;
-  if (name === "DeleteQuery") return null;
+  if (name === "DeleteQuery") {
+    demoSavedQueries = demoSavedQueries.filter((query) => query.id !== args[0]);
+    return null;
+  }
+  if (name === "ExportQueryResult") return `/tmp/${args[1] || "export.csv"}`;
+  if (name === "OpenExportedFile" || name === "RevealExportedFile") return null;
   if (name === "TestConnection") return null;
   if (name === "Connect" || name === "ConnectDatabase")
     return {
@@ -191,16 +206,19 @@ async function demoCall(name, ...args) {
     ];
   }
   if (name === "ListSavedQueries")
-    return [
-      {
-        id: "q1",
-        connectionId: args[0],
-        name: "Slow users lookup",
-        sql: "select * from users where created_at < now() - interval '1 year'\norder by created_at desc\nlimit 100;",
-        updatedAt: new Date().toISOString(),
-      },
+    return demoSavedQueries.filter((query) => query.connectionId === args[0]);
+  if (name === "SaveQuery") {
+    const saved = {
+      ...args[0],
+      id: args[0].id || `q-${Date.now()}`,
+      updatedAt: new Date().toISOString(),
+    };
+    demoSavedQueries = [
+      saved,
+      ...demoSavedQueries.filter((query) => query.id !== saved.id),
     ];
-  if (name === "SaveQuery") return { ...args[0], id: `q-${Date.now()}` };
+    return saved;
+  }
   if (name === "GetDatabaseTableDetail")
     return {
       name: args[3],
