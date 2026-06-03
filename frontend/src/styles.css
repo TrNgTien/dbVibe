@@ -529,6 +529,15 @@ h3 {
   min-height: 38px;
 }
 
+.connectionActions {
+  border-top: 1px solid #2c333d;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .form,
 .settingsGrid {
   padding: 12px;
@@ -1148,6 +1157,365 @@ pre {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(0, 1.1fr);
   gap: 12px;
+}
+
+.insightsPage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.insightsPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.insightsPanel .panelHead small {
+  display: block;
+  margin-top: 4px;
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.insightsRefreshControls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.insightsRefreshSplit {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #333a44;
+  border-radius: 7px;
+  background: #1c2128;
+}
+
+.insightsRefreshSplit button {
+  border: 0;
+  background: transparent;
+}
+
+.insightsRefreshButton {
+  border-radius: 6px 0 0 6px;
+  min-width: 102px;
+}
+
+.insightsRefreshMenuButton {
+  width: 30px;
+  padding: 0;
+  border-left: 1px solid #333a44 !important;
+  border-radius: 0 6px 6px 0;
+}
+
+.insightsRefreshSplit button:hover {
+  background: #202835;
+}
+
+.insightsRefreshMenu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  width: 82px;
+  padding: 4px;
+  border: 1px solid #303946;
+  border-radius: 6px;
+  background: #1f2329;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+  display: grid;
+  gap: 1px;
+}
+
+.insightsRefreshMenu button {
+  width: 100%;
+  min-height: 30px;
+  justify-content: flex-start;
+  border-radius: 3px;
+  padding: 5px 9px;
+  color: #c4ccd6;
+}
+
+.insightsRefreshMenu button.active {
+  background: #3a3d45;
+  color: #f0f3f6;
+}
+
+.spinning {
+  animation: insight-spin 0.8s linear infinite;
+}
+
+@keyframes insight-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.insightsError {
+  margin: 0;
+  border-radius: 0;
+}
+
+.resourceTelemetry {
+  padding: 12px;
+  border-bottom: 1px solid #2c333d;
+  display: grid;
+  gap: 9px;
+}
+
+.resourceTelemetryHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resourceTelemetryHead strong {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #c4ccd6;
+}
+
+.resourceTelemetryHead span {
+  color: #7f8a97;
+  font-size: 11px;
+}
+
+.resourceCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.resourceCard {
+  border: 1px solid #303946;
+  background: #111821;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.resourceCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resourceCardHead span {
+  color: #aab3be;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.resourceCardHead strong {
+  font-size: 16px;
+}
+
+.resourceCard small {
+  color: #7f8a97;
+  font-size: 11px;
+}
+
+.resourceProgress {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #27303b;
+}
+
+.resourceProgress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4c8dff;
+}
+
+.resourceProgress.cpu i {
+  background: #8b7cff;
+}
+
+.insightsSummary {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  border-bottom: 1px solid #2c333d;
+}
+
+.insightsSummary div {
+  border: 1px solid #303946;
+  background: #111821;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 7px;
+}
+
+.insightsSummary span {
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.insightsSummary strong {
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.insightsTableScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.insightsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.insightsTable th,
+.insightsTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #272f39;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.insightsTable th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #171c23;
+  color: #95a0ad;
+  font-weight: 600;
+}
+
+.insightsTable th:nth-child(2),
+.insightsTable td:nth-child(2) {
+  text-align: left;
+}
+
+.insightsTable tbody tr:hover {
+  background: #18212c;
+}
+
+.insightRow {
+  cursor: pointer;
+}
+
+.insightRow:focus {
+  outline: 1px solid #4c8dff;
+  outline-offset: -1px;
+  background: #18212c;
+}
+
+.impactCell {
+  width: 110px;
+}
+
+.impactCell strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #9ec3ff;
+}
+
+.impactCell span {
+  display: block;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #27303b;
+}
+
+.impactCell i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #4c8dff;
+}
+
+.insightQuery {
+  position: relative;
+  max-width: 560px;
+  color: #d6dde6;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+.insightQueryText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.insightQueryTooltip {
+  display: none;
+  position: absolute;
+  z-index: 5;
+  top: calc(100% - 4px);
+  left: 10px;
+  width: min(640px, 70vw);
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid #3b4654;
+  border-radius: 7px;
+  background: #0e1319;
+  color: #e8edf2;
+  padding: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  line-height: 1.5;
+}
+
+.insightQuery:hover .insightQueryTooltip,
+.insightQuery:focus-within .insightQueryTooltip {
+  display: block;
+}
+
+.insightModal {
+  width: min(820px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 48px));
+}
+
+.insightModal .modalHead small {
+  display: block;
+  margin-top: 4px;
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.insightModalBody {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+}
+
+.insightsEmpty {
+  flex: 1;
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: #95a0ad;
+  text-align: center;
+  padding: 24px;
+}
+
+.insightsEmpty strong {
+  color: #d6dde6;
+}
+
+.insightsEmpty span {
+  max-width: 560px;
 }
 
 .traceInputPanel,

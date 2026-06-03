@@ -232,6 +232,29 @@ func (a *App) ExplainAnalyzeDatabase(connectionID, databaseName, sqlText string)
 	return database.ExplainAnalyze(ctx, db, conn.Driver, sqlText)
 }
 
+func (a *App) GetQueryInsights(connectionID, databaseName string, limit int) (database.QueryInsights, error) {
+	conn, _, err := a.openStored(connectionID)
+	if err != nil {
+		return database.QueryInsights{}, err
+	}
+	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
+		conn.Database = strings.TrimSpace(databaseName)
+	}
+	if conn.Driver != "mysql" && conn.Driver != "postgres" && conn.Driver != "redis" {
+		return database.QueryInsights{}, fmt.Errorf("query insights are not supported for %s", conn.Driver)
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Second)
+	defer cancel()
+	if conn.Driver == "redis" {
+		return database.InspectQueryInsights(ctx, nil, conn, limit)
+	}
+	conn, db, err := a.openSession(ctx, connectionID, conn, conn.Database)
+	if err != nil {
+		return database.QueryInsights{}, err
+	}
+	return database.InspectQueryInsights(ctx, db, conn, limit)
+}
+
 func (a *App) CloseConnection(connectionID, databaseName string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -503,13 +526,19 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 	if conn.Driver != "mysql" {
 		return "", errors.New("binlogs are only supported for MySQL")
 	}
-
-	tmpFile, err := os.CreateTemp("", "binlog-*.sql")
+	mysqlbinlogPath, err := findMySQLBinlog()
 	if err != nil {
 		return "", err
 	}
+
+	tmpFile, err := os.CreateTemp("", "binlog-*.sql")
+	if err != nil {
+		return "", fmt.Errorf("create binlog output file: %w", err)
+	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
+	if err := tmpFile.Close(); err != nil {
+		return "", fmt.Errorf("close binlog output file: %w", err)
+	}
 	defer os.Remove(tmpPath)
 
 	args := []string{
@@ -522,29 +551,64 @@ func (a *App) ReadBinlog(connectionID, logName string) (string, error) {
 		logName,
 	}
 
-	cmd := exec.Command("mysqlbinlog", args...)
+	cmd := exec.Command(mysqlbinlogPath, args...)
 	cmd.Env = append(os.Environ(), "MYSQL_PWD="+conn.Password)
 
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("open binlog output file: %w", err)
 	}
 	cmd.Stdout = outFile
 	cmd.Stderr = outFile
 
 	err = cmd.Run()
-	outFile.Close()
+	closeErr := outFile.Close()
 
 	content, readErr := os.ReadFile(tmpPath)
 	if readErr != nil {
-		return "", readErr
+		return "", fmt.Errorf("read binlog output: %w", readErr)
+	}
+	if closeErr != nil {
+		return "", fmt.Errorf("close binlog output file: %w", closeErr)
 	}
 
 	if err != nil {
-		return "", fmt.Errorf("mysqlbinlog failed: %v\nOutput: %s", err, string(content))
+		output := strings.TrimSpace(string(content))
+		if output == "" {
+			return "", fmt.Errorf("mysqlbinlog failed: %w", err)
+		}
+		return "", fmt.Errorf("mysqlbinlog failed: %w\n%s", err, output)
 	}
 
 	return string(content), nil
+}
+
+func findMySQLBinlog() (string, error) {
+	if path, err := exec.LookPath("mysqlbinlog"); err == nil {
+		return path, nil
+	}
+
+	candidates := []string{
+		"/opt/homebrew/opt/mysql-client/bin/mysqlbinlog",
+		"/opt/homebrew/opt/mysql/bin/mysqlbinlog",
+		"/usr/local/opt/mysql-client/bin/mysqlbinlog",
+		"/usr/local/opt/mysql/bin/mysqlbinlog",
+		"/usr/local/mysql/bin/mysqlbinlog",
+	}
+	if path := firstExecutable(candidates); path != "" {
+		return path, nil
+	}
+	return "", errors.New(`mysqlbinlog is required to load remote binlogs. Install it with "brew install mysql-client", then restart dbVibe`)
+}
+
+func firstExecutable(paths []string) string {
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() && info.Mode().Perm()&0111 != 0 {
+			return path
+		}
+	}
+	return ""
 }
 
 func (a *App) openStored(connectionID string) (store.Connection, *sql.DB, error) {

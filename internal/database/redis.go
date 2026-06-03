@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -247,6 +248,126 @@ func redisKeys(ctx context.Context, client *redis.Client, database string, limit
 		})
 	}
 	return items, nil
+}
+
+func redisQueryInsights(ctx context.Context, conn store.Connection, limit int) (QueryInsights, error) {
+	client := newRedisClient(conn)
+	defer client.Close()
+
+	if err := client.Ping(ctx).Err(); err != nil {
+		return QueryInsights{}, fmt.Errorf("redis ping failed: %w", err)
+	}
+
+	commandStats, err := client.Info(ctx, "commandstats").Result()
+	if err != nil {
+		return QueryInsights{}, fmt.Errorf("redis commandstats info: %w", err)
+	}
+	stats, err := client.Info(ctx, "stats").Result()
+	if err != nil {
+		return QueryInsights{}, fmt.Errorf("redis stats info: %w", err)
+	}
+	resources, err := client.Info(ctx, "memory", "cpu").Result()
+	if err != nil {
+		return QueryInsights{}, fmt.Errorf("redis resource info: %w", err)
+	}
+
+	insights := parseRedisQueryInsights(commandStats, stats, resources, limit)
+	return insights, nil
+}
+
+func parseRedisQueryInsights(commandStats, stats, resources string, limit int) QueryInsights {
+	insights := newQueryInsights("redis_commandstats")
+	insights.Queries = parseRedisCommandStats(commandStats)
+	if limit > 0 && len(insights.Queries) > limit {
+		insights.Queries = insights.Queries[:limit]
+	}
+	finalizeQueryInsights(&insights)
+
+	statsValues := parseRedisInfoValues(stats)
+	insights.Summary.OperationsPerSecond = parseRedisInfoInt(statsValues["instantaneous_ops_per_sec"])
+	hits := parseRedisInfoInt(statsValues["keyspace_hits"])
+	misses := parseRedisInfoInt(statsValues["keyspace_misses"])
+	if lookups := hits + misses; lookups > 0 {
+		insights.Summary.CacheHitRatio = float64(hits) / float64(lookups) * 100
+	}
+	resourceValues := parseRedisInfoValues(resources)
+	insights.Resources.MemoryUsedBytes = parseRedisInfoInt(resourceValues["used_memory"])
+	insights.Resources.MemoryLimitBytes = parseRedisInfoInt(resourceValues["maxmemory"])
+	insights.Resources.MemoryAvailable = true
+	insights.Resources.MemoryLimitLabel = "maxmemory"
+	insights.Resources.Source = "redis"
+	insights.Resources.CPUTotalSeconds =
+		parseRedisInfoFloat(resourceValues["used_cpu_sys"]) +
+			parseRedisInfoFloat(resourceValues["used_cpu_user"])
+	insights.Resources.CPUAvailable = true
+	return insights
+}
+
+func parseRedisCommandStats(info string) []QueryInsight {
+	items := make([]QueryInsight, 0)
+	for key, value := range parseRedisInfoValues(info) {
+		if !strings.HasPrefix(key, "cmdstat_") {
+			continue
+		}
+		values := parseRedisInfoFields(value)
+		calls := parseRedisInfoInt(values["calls"])
+		totalUS := parseRedisInfoFloat(values["usec"])
+		averageUS := parseRedisInfoFloat(values["usec_per_call"])
+		if averageUS == 0 && calls > 0 {
+			averageUS = totalUS / float64(calls)
+		}
+		items = append(items, QueryInsight{
+			Query:         strings.ToUpper(strings.TrimPrefix(key, "cmdstat_")),
+			Calls:         calls,
+			TotalTimeMS:   totalUS / 1000,
+			AverageTimeMS: averageUS / 1000,
+			FailedCalls:   parseRedisInfoInt(values["failed_calls"]),
+			RejectedCalls: parseRedisInfoInt(values["rejected_calls"]),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].TotalTimeMS == items[j].TotalTimeMS {
+			return items[i].Calls > items[j].Calls
+		}
+		return items[i].TotalTimeMS > items[j].TotalTimeMS
+	})
+	return items
+}
+
+func parseRedisInfoValues(info string) map[string]string {
+	values := make(map[string]string)
+	for _, line := range strings.Split(info, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if ok {
+			values[key] = value
+		}
+	}
+	return values
+}
+
+func parseRedisInfoFields(value string) map[string]string {
+	fields := make(map[string]string)
+	for _, part := range strings.Split(value, ",") {
+		key, fieldValue, ok := strings.Cut(part, "=")
+		if ok {
+			fields[key] = fieldValue
+		}
+	}
+	return fields
+}
+
+func parseRedisInfoInt(value string) int64 {
+	number, _ := strconv.ParseInt(value, 10, 64)
+	return number
+}
+
+func parseRedisInfoFloat(value string) float64 {
+	number, _ := strconv.ParseFloat(value, 64)
+	return number
 }
 
 func formatRedisResult(res interface{}) (QueryResult, error) {

@@ -13,6 +13,13 @@ Minimal macOS SQL client built with Wails, Go, and React. It focuses on fast dat
 - Table browser with row preview
 - First-glance table diagnostics: columns, indexes, create table SQL, sample rows
 - `EXPLAIN ANALYZE` panel
+- MySQL binlog trace viewer
+
+The MySQL binlog trace viewer requires the `mysqlbinlog` client:
+
+```bash
+brew install mysql-client
+```
 
 ## Run the portable app (macOS)
 

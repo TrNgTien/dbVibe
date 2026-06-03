@@ -310,6 +310,116 @@ async function demoCall(name, ...args) {
       ],
       durationMs: 12,
     };
+  if (name === "GetQueryInsights")
+    return args[0] === "demo-redis"
+      ? {
+          available: true,
+          source: "redis_commandstats",
+          collectedAt: new Date().toISOString(),
+          resources: {
+            memoryUsedBytes: 89456640,
+            memoryLimitBytes: 268435456,
+            memoryAvailable: true,
+            memoryLimitLabel: "maxmemory",
+            cpuAvailable: true,
+            cpuTotalSeconds: Date.now() / 10000,
+          },
+          summary: {
+            statementCount: 3,
+            calls: 46220,
+            totalTimeMs: 1180,
+            averageTimeMs: 0.026,
+            failedCalls: 12,
+            rejectedCalls: 2,
+            operationsPerSecond: 840,
+            cacheHitRatio: 96.8,
+          },
+          queries: [
+            {
+              query: "GET",
+              calls: 32100,
+              totalTimeMs: 610,
+              averageTimeMs: 0.019,
+              failedCalls: 0,
+              rejectedCalls: 0,
+              impactPercent: 51.7,
+            },
+            {
+              query: "HGETALL",
+              calls: 8200,
+              totalTimeMs: 420,
+              averageTimeMs: 0.051,
+              failedCalls: 2,
+              rejectedCalls: 0,
+              impactPercent: 35.6,
+            },
+            {
+              query: "SET",
+              calls: 5920,
+              totalTimeMs: 150,
+              averageTimeMs: 0.025,
+              failedCalls: 10,
+              rejectedCalls: 2,
+              impactPercent: 12.7,
+            },
+          ],
+        }
+      : {
+      available: true,
+      source: "pg_stat_statements",
+      collectedAt: new Date().toISOString(),
+      resources: {
+        memoryUsedBytes: 398458880,
+        memoryLimitBytes: 1073741824,
+        memoryAvailable: true,
+        memoryLimitLabel: "InnoDB buffer pool",
+        cpuAvailable: false,
+        cpuMessage: "Current MySQL CPU usage is not exposed by Performance Schema.",
+      },
+      summary: {
+        statementCount: 3,
+        calls: 18420,
+        totalTimeMs: 284320,
+        averageTimeMs: 15.44,
+        rows: 924000,
+        rowsExamined: 0,
+      },
+      queries: [
+        {
+          query: "SELECT * FROM users WHERE email = $1",
+          calls: 14200,
+          totalTimeMs: 142000,
+          averageTimeMs: 10,
+          rows: 14200,
+          rowsExamined: 0,
+          tempDiskTables: 0,
+          cacheHitRatio: 99.4,
+          impactPercent: 49.9,
+        },
+        {
+          query: "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
+          calls: 3900,
+          totalTimeMs: 118000,
+          averageTimeMs: 30.3,
+          rows: 890000,
+          rowsExamined: 0,
+          tempDiskTables: 0,
+          cacheHitRatio: 94.8,
+          impactPercent: 41.5,
+        },
+        {
+          query: "UPDATE billing_sessions SET status = $1 WHERE id = $2",
+          calls: 320,
+          totalTimeMs: 24320,
+          averageTimeMs: 76,
+          rows: 320,
+          rowsExamined: 0,
+          tempDiskTables: 0,
+          cacheHitRatio: 98.1,
+          impactPercent: 8.6,
+        },
+      ],
+        };
   if (name === "ListBinlogs") {
     return ["binlog.000001", "binlog.000002", "binlog.000003"];
   }

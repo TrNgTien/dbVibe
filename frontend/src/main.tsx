@@ -6,6 +6,7 @@ import {
   ChevronsDown,
   Copy,
   Database,
+  Gauge,
   FileDown,
   Play,
   Plus,
@@ -32,6 +33,7 @@ import {
 import { StartupPage } from "./pages/StartupPage";
 import { TraceLogPage } from "./pages/TraceLogPage";
 import { ExportsPage } from "./pages/ExportsPage";
+import { QueryInsightsPage } from "./pages/QueryInsightsPage";
 import { ResultPanel, TableInspector } from "./components/ResultPanel";
 import { ConnectionForm } from "./components/ConnectionForm";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -224,6 +226,94 @@ function withDefaultSelectLimit(sqlText, limit = 100) {
     ? trimmed.slice(0, -semicolons.length).trimEnd()
     : trimmed;
   return `${base} limit ${limit}${semicolons}`;
+}
+
+function sqlIdentifierTokens(sqlText) {
+  const tokens = [];
+
+  for (let i = 0; i < sqlText.length; i++) {
+    const char = sqlText[i];
+    const next = sqlText[i + 1];
+
+    if (/\s/.test(char)) continue;
+    if (char === "-" && next === "-") {
+      i = sqlText.indexOf("\n", i + 2);
+      if (i === -1) break;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      const end = sqlText.indexOf("*/", i + 2);
+      if (end === -1) break;
+      i = end + 1;
+      continue;
+    }
+    if (char === "'") {
+      for (i++; i < sqlText.length; i++) {
+        if (sqlText[i] === "'" && sqlText[i + 1] === "'") {
+          i++;
+        } else if (sqlText[i] === "'") {
+          break;
+        } else if (sqlText[i] === "\\") {
+          i++;
+        }
+      }
+      continue;
+    }
+    if (char === '"' || char === "`") {
+      let value = "";
+      for (i++; i < sqlText.length; i++) {
+        if (sqlText[i] === char && sqlText[i + 1] === char) {
+          value += char;
+          i++;
+        } else if (sqlText[i] === char) {
+          break;
+        } else {
+          value += sqlText[i];
+        }
+      }
+      tokens.push(value);
+      continue;
+    }
+    if (char === "." || char === "(" || char === ")") {
+      tokens.push(char);
+      continue;
+    }
+    const match = sqlText.slice(i).match(/^[a-z0-9_$]+/i);
+    if (match) {
+      tokens.push(match[0]);
+      i += match[0].length - 1;
+    }
+  }
+
+  return tokens;
+}
+
+function findQueryTable(sqlText, tables = []) {
+  const keyword = firstSqlKeyword(sqlText);
+  if (keyword !== "select" && keyword !== "with") return null;
+
+  const tokens = sqlIdentifierTokens(sqlText);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i].toLowerCase();
+    if (token !== "from" && token !== "join") continue;
+    if (!tokens[i + 1] || tokens[i + 1] === "(") continue;
+
+    let schema = "";
+    let table = tokens[i + 1];
+    if (tokens[i + 2] === "." && tokens[i + 3]) {
+      schema = table;
+      table = tokens[i + 3];
+    }
+
+    const matches = tables.filter(
+      (item) =>
+        item.name.toLowerCase() === table.toLowerCase() &&
+        (!schema || item.schema.toLowerCase() === schema.toLowerCase()),
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
+  return null;
 }
 
 function App() {
@@ -475,7 +565,6 @@ function App() {
     setCreatingConnection(false);
     setEditingConnection(false);
     setDraft({ ...defaultConnection, ...saved });
-    setConnectionStatus("disconnected");
     const connId = saved.id || draft.id;
     setDetail(null);
     setConnectedConnections((current) => {
@@ -493,6 +582,7 @@ function App() {
       delete next[connId];
       return next;
     });
+    await connect(saved);
   }
 
   function duplicateConnection() {
@@ -778,6 +868,25 @@ function App() {
     setResult(next);
     if (selected.driver === "redis") {
       setLastRedisCommand(queryToRun);
+    }
+    const queryTable = findQueryTable(queryToRun, detail?.tables || []);
+    if (queryTable) {
+      try {
+        const nextTableDetail = await api.call(
+          "GetDatabaseTableDetail",
+          selected.id,
+          detail?.database || "",
+          queryTable.schema,
+          queryTable.name,
+          generalSettings.defaultSelectLimit ?? 100,
+        );
+        setTableDetail(nextTableDetail);
+      } catch (err) {
+        console.error("Failed to load table DDL:", err);
+        setTableDetail(null);
+      }
+    } else {
+      setTableDetail(null);
     }
     setShowTableDetail(false);
   }
@@ -1241,6 +1350,17 @@ function App() {
                   Query
                 </button>
                 <button
+                  className={workspaceView === "insights" ? "active" : ""}
+                  onClick={() => setWorkspaceView("insights")}
+                  disabled={
+                    selected?.driver !== "mysql" &&
+                    selected?.driver !== "postgres" &&
+                    selected?.driver !== "redis"
+                  }
+                >
+                  <Gauge size={14} /> Insights
+                </button>
+                <button
                   className={workspaceView === "trace" ? "active" : ""}
                   onClick={() => setWorkspaceView("trace")}
                 >
@@ -1324,13 +1444,10 @@ function App() {
               <section className="panel connectionPanel">
                 <div className="panelHead">
                   <h2>Connection Detail</h2>
+                </div>
+                <ConnectionForm draft={draft} setDraft={setDraft} />
+                <div className="connectionActions">
                   <div className="rowActions">
-                    <button onClick={testConnection}>
-                      <Activity size={15} /> Test
-                    </button>
-                    <button onClick={saveConnection}>
-                      <Save size={15} /> Save
-                    </button>
                     <button
                       onClick={duplicateConnection}
                       disabled={!draft.name}
@@ -1341,8 +1458,15 @@ function App() {
                       <Trash2 size={15} />
                     </button>
                   </div>
+                  <div className="rowActions">
+                    <button onClick={testConnection}>
+                      <Activity size={15} /> Test
+                    </button>
+                    <button className="primary" onClick={saveConnection}>
+                      <Save size={15} /> Save &amp; Connect
+                    </button>
+                  </div>
                 </div>
-                <ConnectionForm draft={draft} setDraft={setDraft} />
               </section>
             )}
 
@@ -1351,15 +1475,18 @@ function App() {
                 <div className="panelHead">
                   <h2>Command</h2>
                   <div className="rowActions">
-                    {tableDetail && (
-                      <button
-                        onClick={() => setShowTableDetail(!showTableDetail)}
-                        title="Toggle Table Detail"
-                      >
-                        <Table2 size={15} />{" "}
-                        {showTableDetail ? "Hide DDL" : "Show DDL"}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setShowTableDetail(!showTableDetail)}
+                      title={
+                        tableDetail
+                          ? "Toggle Table Detail"
+                          : "Run a SELECT or select a table to view its DDL"
+                      }
+                      disabled={!tableDetail}
+                    >
+                      <Table2 size={15} />{" "}
+                      {showTableDetail ? "Hide DDL" : "Show DDL"}
+                    </button>
                     <button onClick={saveCurrentQuery}>
                       <Save size={15} /> Query
                     </button>
@@ -1430,6 +1557,13 @@ function App() {
 
         {!editingConnectionDetails && workspaceView === "trace" && (
           <TraceLogPage connection={selected} onExport={exportQueryResult} />
+        )}
+
+        {!editingConnectionDetails && workspaceView === "insights" && (
+          <QueryInsightsPage
+            connection={selected}
+            database={detail?.database || selected?.database}
+          />
         )}
 
         {!editingConnectionDetails && workspaceView === "exports" && (

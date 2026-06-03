@@ -255,7 +255,7 @@ export function TableInspector({ detail }) {
 }
 
 function RowDetailModal({ title, row, isExplain, onClose }) {
-  const [viewMode, setViewMode] = useState("json");
+  const [viewMode, setViewMode] = useState(isExplain ? "list" : "json");
   const [fieldSearch, setFieldSearch] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
   const filteredEntries = useMemo(() => {
@@ -270,7 +270,6 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
       if (event.key === "Escape") {
         onClose();
       } else if (
-        !isExplain &&
         event.key.toLowerCase() === "f" &&
         (event.metaKey || event.ctrlKey)
       ) {
@@ -359,27 +358,23 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
             <X size={18} />
           </button>
         </div>
-        {!isExplain && (
-          <div className="rowDetailToolbar">
-            <label className="rowFieldSearch">
-              <Search size={15} />
-              <input
-                ref={searchInputRef}
-                value={fieldSearch}
-                onChange={(event) => setFieldSearch(event.target.value)}
-                placeholder="Search fields..."
-                aria-label="Search fields"
-              />
-            </label>
-            <span>
-              {filteredEntries.length} of {Object.keys(row).length} fields
-            </span>
-          </div>
-        )}
+        <div className="rowDetailToolbar">
+          <label className="rowFieldSearch">
+            <Search size={15} />
+            <input
+              ref={searchInputRef}
+              value={fieldSearch}
+              onChange={(event) => setFieldSearch(event.target.value)}
+              placeholder="Search fields..."
+              aria-label="Search fields"
+            />
+          </label>
+          <span>
+            {filteredEntries.length} of {Object.keys(row).length} fields
+          </span>
+        </div>
         <div className="modalBody rowDetail">
-          {isExplain ? (
-            <pre className="explainValue">{Object.values(row)[0]}</pre>
-          ) : viewMode === "json" ? (
+          {viewMode === "json" ? (
             <div style={{ position: "relative" }}>
               <button
                 className="iconButton small"
