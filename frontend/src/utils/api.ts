@@ -306,11 +306,29 @@ async function demoCall(name, ...args) {
       columns: ["QUERY PLAN"],
       rows: [
         [
-          "Limit  (cost=0.00..1.00 rows=100 width=10) (actual time=0.01..0.02 rows=2 loops=1)",
+          "Limit  (cost=1480.10..1480.35 rows=100 width=48) (actual time=12.01..12.03 rows=100 loops=1)",
         ],
         [
-          "  ->  Seq Scan on users  (cost=0.00..1.00 rows=100 width=10) (actual time=0.01..0.02 rows=2 loops=1)",
+          "  ->  Sort  (cost=1480.10..1492.60 rows=5000 width=48) (actual time=12.00..12.01 rows=100 loops=1)",
         ],
+        ["        Sort Key: o.created_at DESC"],
+        ["        Sort Method: top-N heapsort  Memory: 42kB"],
+        [
+          "        ->  Hash Join  (cost=280.00..1275.00 rows=500 width=48) (actual time=1.85..10.50 rows=4820 loops=1)",
+        ],
+        ["              Hash Cond: (o.user_id = u.id)"],
+        [
+          "              ->  Seq Scan on orders o  (cost=0.00..890.00 rows=42000 width=32) (actual time=0.01..4.20 rows=42000 loops=1)",
+        ],
+        [
+          "              ->  Hash  (cost=180.00..180.00 rows=8000 width=16) (actual time=1.75..1.75 rows=8000 loops=1)",
+        ],
+        [
+          "                    ->  Index Scan using users_active_idx on users u  (cost=0.29..180.00 rows=8000 width=16) (actual time=0.02..1.10 rows=8000 loops=1)",
+        ],
+        ["                          Filter: active"],
+        ["Planning Time: 0.420 ms"],
+        ["Execution Time: 12.310 ms"],
       ],
       durationMs: 12,
     };

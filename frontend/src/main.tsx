@@ -20,6 +20,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  Zap,
 } from "lucide-react";
 import "./styles.css";
 import { SqlEditor } from "./components/SqlEditor";
@@ -35,6 +36,7 @@ import { StartupPage } from "./pages/StartupPage";
 import { TraceLogPage } from "./pages/TraceLogPage";
 import { ExportsPage } from "./pages/ExportsPage";
 import { QueryInsightsPage } from "./pages/QueryInsightsPage";
+import { QueryOptimizerPage } from "./pages/QueryOptimizerPage";
 import { ResultPanel, TableInspector } from "./components/ResultPanel";
 import { ConnectionForm } from "./components/ConnectionForm";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -1457,6 +1459,17 @@ function App() {
                   <Gauge size={14} /> Insights
                 </button>
                 <button
+                  className={workspaceView === "optimizer" ? "active" : ""}
+                  onClick={() => setWorkspaceView("optimizer")}
+                  disabled={
+                    selected?.driver !== "mysql" &&
+                    selected?.driver !== "postgres" &&
+                    selected?.driver !== "timescaledb"
+                  }
+                >
+                  <Zap size={14} /> Optimizer
+                </button>
+                <button
                   className={workspaceView === "trace" ? "active" : ""}
                   onClick={() => setWorkspaceView("trace")}
                 >
@@ -1748,6 +1761,14 @@ function App() {
           <QueryInsightsPage
             connection={selected}
             database={detail?.database || selected?.database}
+          />
+        )}
+
+        {!editingConnectionDetails && workspaceView === "optimizer" && (
+          <QueryOptimizerPage
+            connection={selected}
+            database={detail?.database || selected?.database}
+            sqlText={sqlText}
           />
         )}
 

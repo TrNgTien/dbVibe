@@ -226,7 +226,7 @@ func (a *App) ExplainAnalyzeDatabase(connectionID, databaseName, sqlText string)
 	if strings.TrimSpace(databaseName) != "" && strings.TrimSpace(databaseName) != conn.Database {
 		conn.Database = strings.TrimSpace(databaseName)
 	}
-	if conn.Driver != "mysql" && conn.Driver != "postgres" {
+	if conn.Driver != "mysql" && conn.Driver != "postgres" && conn.Driver != "timescaledb" {
 		return database.QueryResult{}, fmt.Errorf("explain analyze is not supported for %s", conn.Driver)
 	}
 	ctx, cancel := context.WithTimeout(a.ctx, 90*time.Second)
