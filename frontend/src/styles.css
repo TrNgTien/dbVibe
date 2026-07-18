@@ -2779,6 +2779,28 @@ td {
   margin-top: 3px;
 }
 
+.decisionOptBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #a8c6ff;
+  background: #17233a;
+  border: 1px solid #2b4a7d;
+  vertical-align: middle;
+}
+
+.decisionOptBadge.rule {
+  color: #d9a441;
+  background: #2a2011;
+  border-color: #5a4623;
+}
+
 .candidateRow {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -2815,19 +2837,32 @@ td {
 .candidateTrack {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 0;
   height: 18px;
 }
 
 .candidateBar {
   height: 8px;
-  border-radius: 0 4px 4px 0;
   background: #333e4d;
   animation: barGrow 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
 }
 
-.candidateRow.won .candidateBar {
+.candidateBar.io {
+  border-radius: 4px 0 0 4px;
+  background: #3a4a63;
+}
+
+.candidateBar.cpu {
+  border-radius: 0 4px 4px 0;
+  background: #4a3a5e;
+}
+
+.candidateRow.won .candidateBar.io {
   background: #4c8dff;
+}
+
+.candidateRow.won .candidateBar.cpu {
+  background: #a97bff;
 }
 
 @keyframes barGrow {
@@ -2839,6 +2874,7 @@ td {
   color: #95a0ad;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  margin-left: 9px;
 }
 
 .candidateCost em {
@@ -2846,11 +2882,76 @@ td {
   color: #6e7a88;
 }
 
+.candidateBreakdown {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: #8a95a3;
+  font-variant-numeric: tabular-nums;
+}
+
+.candidateBreakdown .pillar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.candidateBreakdown .pillar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.candidateBreakdown .pillar.io i {
+  background: #4c8dff;
+}
+
+.candidateBreakdown .pillar.cpu i {
+  background: #a97bff;
+}
+
+.candidateBreakdown .pillarRows {
+  color: #6e7a88;
+}
+
+.candidateFormula {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #6e7a88;
+  font-variant-numeric: tabular-nums;
+}
+
+.candidateFormula .formulaNote {
+  color: #7b84f5;
+}
+
 .candidateReason {
   grid-column: 2;
   color: #6e7a88;
   font-size: 11.5px;
   line-height: 1.4;
+}
+
+.candidateMeta {
+  grid-column: 2;
+  display: flex;
+  gap: 12px;
+  color: #7fb0ff;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.candidateMeta.muted {
+  color: #6e7a88;
+  font-style: italic;
 }
 
 .decisionVerdict {
@@ -2878,6 +2979,70 @@ td {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.nodeCalcPanel {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 6;
+  width: min(420px, calc(100% - 24px));
+  max-height: min(70%, 480px);
+  overflow-y: auto;
+  border: 1px solid #2b4a7d;
+  border-radius: 10px;
+  background: rgba(20, 24, 31, 0.97);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 12px;
+  animation: tokenIn 0.2s ease;
+}
+
+.nodeCalcPanel .decisionCard {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  max-width: none;
+  animation: none;
+}
+
+.nodeCalcPanelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #222831;
+  font-size: 13px;
+}
+
+.nodeCalcPanelHead b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nodeCalcClose {
+  border: 0;
+  background: transparent;
+  color: #95a0ad;
+  padding: 3px;
+  border-radius: 5px;
+  flex: none;
+}
+
+.nodeCalcClose:hover {
+  background: #252b34;
+  color: #e6e9ed;
+}
+
+.nodeCalcRuleText {
+  color: #b7c0cb;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 .planTreeTools {
@@ -2996,6 +3161,48 @@ td {
   color: #8fd7a8;
   background: #16261c;
   border-color: #2b5a3c;
+}
+
+.planNodeOpt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-bottom: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.planNodeOpt.cbo {
+  color: #a8c6ff;
+  background: #17233a;
+  border: 1px solid #2b4a7d;
+}
+
+.planNodeOpt.rule {
+  color: #d9a441;
+  background: #2a2011;
+  border: 1px solid #5a4623;
+}
+
+.planNodeOpt:hover {
+  filter: brightness(1.25);
+}
+
+.planNodeOpt.inspected {
+  box-shadow: 0 0 0 2px rgba(127, 176, 255, 0.5);
+}
+
+.planNodeOptHint {
+  color: inherit;
+  opacity: 0.55;
+  font-weight: 400;
+  text-transform: lowercase;
 }
 
 .planNodeLabel {

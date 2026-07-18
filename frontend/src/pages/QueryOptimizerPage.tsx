@@ -8,6 +8,8 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Scale,
+  Workflow,
   X,
   ZoomIn,
   ZoomOut,
@@ -42,14 +44,6 @@ function formatRows(value) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 10_000) return `${(n / 1_000).toFixed(0)}K`;
   return n.toLocaleString();
-}
-
-function hashString(text) {
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    hash = (hash * 31 + text.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash);
 }
 
 function nodeKind(label) {
@@ -232,6 +226,209 @@ function chosenJoinIndex(label) {
   return -1;
 }
 
+// A node is CBO-resolved only if deriveDecisions found real alternatives to
+// price it against. Everything else — LIMIT, Sort, Filter, Aggregate, an
+// unrecognized scan/join variant — was placed by a fixed rule, not a cost
+// comparison, so it gets no CBO badge.
+function nodeResolution(node, decisionsByNode) {
+  return decisionsByNode.has(node) ? "cbo" : "rule";
+}
+
+function formatCost(value) {
+  return value >= 100 ? Math.round(value).toLocaleString() : value.toFixed(2);
+}
+
+const formatCount = (value) => formatRows(Math.round(value));
+
+// Cost-model constants, mirroring the shape of PostgreSQL's planner constants
+// (abstract units, not milliseconds). MySQL uses different absolute numbers but
+// the same two pillars — page I/O and per-row CPU — so one model serves both.
+const COST = {
+  seqPage: 1.0, // sequential page fetch
+  randPage: 4.0, // random page fetch (index → heap)
+  cpuTuple: 0.01, // process one heap row
+  cpuIndexTuple: 0.005, // process one index entry
+  cpuOperator: 0.0025, // evaluate one filter/join predicate
+  rowsPerPage: 100, // rows packed per 8KB page (assumption)
+  fanout: 200, // b-tree entries per page → index depth
+};
+
+const pagesFor = (rows) => Math.max(1, Math.ceil(rows / COST.rowsPerPage));
+const indexDepthFor = (rows) =>
+  Math.max(1, Math.ceil(Math.log(rows + 1) / Math.log(COST.fanout)));
+
+function rowsRemovedByFilter(node) {
+  for (const d of node.details) {
+    const m = d.match(/rows removed by filter:\s*([\d,]+)/i);
+    if (m) return parseInt(m[1].replace(/,/g, ""), 10);
+  }
+  return null;
+}
+
+// Price the three access-path candidates from real quantities. Each entry
+// splits its total into io + cpu so the UI can show *why* one method wins.
+function scanCostModel(node) {
+  const returned = Math.max(1, node.estRows ?? node.actualRows ?? 1);
+  const removed = rowsRemovedByFilter(node);
+  const chosenIdx = chosenScanIndex(node.label);
+  // Rows the base table holds — i.e. what a full scan must examine. ANALYZE
+  // gives it exactly (returned + rows removed by filter); otherwise infer it
+  // from which method the DB actually picked: a full scan winning means the
+  // predicate barely filters, an index winning means the table is far larger.
+  let tableRows;
+  if (removed != null) tableRows = returned + removed;
+  else if (chosenIdx === 0) tableRows = Math.round(returned * 1.15);
+  else tableRows = Math.max(returned * 50, returned + 500);
+  tableRows = Math.max(tableRows, returned);
+  const depth = indexDepthFor(tableRows);
+  const tablePages = pagesFor(tableRows);
+
+  const full = {
+    io: tablePages * COST.seqPage,
+    ioFormula: `pages(${formatCount(tablePages)}) * seqPage(${formatCost(COST.seqPage)})`,
+    cpu: tableRows * (COST.cpuTuple + COST.cpuOperator),
+    cpuFormula: `rows(${formatCount(tableRows)}) * (cpuTuple ${formatCost(COST.cpuTuple)} + cpuOperator ${formatCost(COST.cpuOperator)})`,
+    examined: tableRows,
+    returned,
+  };
+  const index = {
+    io: depth * COST.randPage + returned * COST.randPage,
+    ioFormula: `depth(${depth}) * randPage(${formatCost(COST.randPage)}) + rows(${formatCount(returned)}) * randPage(${formatCost(COST.randPage)})`,
+    cpu: returned * (COST.cpuIndexTuple + COST.cpuTuple),
+    cpuFormula: `rows(${formatCount(returned)}) * (cpuIndexTuple ${formatCost(COST.cpuIndexTuple)} + cpuTuple ${formatCost(COST.cpuTuple)})`,
+    examined: returned,
+    returned,
+  };
+  const matchedPages = Math.min(pagesFor(tableRows), pagesFor(returned) + 1);
+  const bitmap = {
+    io: depth * COST.randPage + matchedPages * COST.seqPage,
+    ioFormula: `depth(${depth}) * randPage(${formatCost(COST.randPage)}) + pages(${formatCount(matchedPages)}) * seqPage(${formatCost(COST.seqPage)})`,
+    cpu: returned * (COST.cpuIndexTuple + COST.cpuTuple),
+    cpuFormula: `rows(${formatCount(returned)}) * (cpuIndexTuple ${formatCost(COST.cpuIndexTuple)} + cpuTuple ${formatCost(COST.cpuTuple)})`,
+    examined: returned,
+    returned,
+  };
+  return { 0: full, 1: index, 2: bitmap };
+}
+
+function joinCostModel(node) {
+  const kids = node.children;
+  const outer = Math.max(1, kids[0]?.estRows ?? kids[0]?.actualRows ?? node.estRows ?? 1);
+  const inner = Math.max(1, kids[1]?.estRows ?? kids[1]?.actualRows ?? outer);
+  const innerNode = kids[1];
+  const innerIndexed =
+    innerNode && innerNode.kind === "scan" && chosenScanIndex(innerNode.label) >= 1;
+  // Both inputs must be read regardless of algorithm, so I/O is shared and CPU
+  // (comparisons/probes) is the differentiator.
+  const outerPages = pagesFor(outer);
+  const innerPages = pagesFor(inner);
+  const io = (outerPages + innerPages) * COST.seqPage;
+  const ioFormula = `(pages(${formatCount(outerPages)}) + pages(${formatCount(innerPages)})) * seqPage(${formatCost(COST.seqPage)})`;
+  const sortCost = (n) => n * Math.log2(n + 1) * COST.cpuOperator;
+
+  const probe = innerIndexed ? indexDepthFor(inner) : inner;
+  const probeLabel = innerIndexed
+    ? `indexDepth(${formatCount(inner)})`
+    : `rows(${formatCount(inner)})`;
+  const nestedLoop = {
+    io,
+    ioFormula,
+    cpu: outer * COST.cpuTuple + outer * probe * COST.cpuOperator,
+    cpuFormula: `rows(${formatCount(outer)}) * cpuTuple ${formatCost(COST.cpuTuple)} + rows(${formatCount(outer)}) * probe(${probeLabel}) * cpuOperator ${formatCost(COST.cpuOperator)}`,
+    examined: outer * probe,
+    returned: node.estRows ?? outer,
+  };
+  const hash = {
+    io,
+    ioFormula,
+    cpu: (outer + inner) * COST.cpuTuple + inner * COST.cpuOperator,
+    cpuFormula: `rows(${formatCount(outer + inner)}) * cpuTuple ${formatCost(COST.cpuTuple)} + rows(${formatCount(inner)}) * cpuOperator ${formatCost(COST.cpuOperator)}`,
+    examined: outer + inner,
+    returned: node.estRows ?? outer,
+  };
+  const merge = {
+    io,
+    ioFormula,
+    cpu: sortCost(outer) + sortCost(inner) + (outer + inner) * COST.cpuOperator,
+    cpuFormula: `sort(${formatCount(outer)}) + sort(${formatCount(inner)}) + rows(${formatCount(outer + inner)}) * cpuOperator ${formatCost(COST.cpuOperator)}`,
+    cpuNote: `sort(n) = n * log2(n + 1) * cpuOperator ${formatCost(COST.cpuOperator)}`,
+    examined: outer + inner,
+    returned: node.estRows ?? outer,
+  };
+  return { 0: nestedLoop, 1: hash, 2: merge };
+}
+
+const DRIVER_LABEL = { mysql: "MySQL", postgres: "PostgreSQL" };
+
+// The actual arithmetic behind a CBO badge: chosen candidate's real cost
+// versus every rejected candidate's illustrative cost, ranked cheapest first.
+function cboCalculation(decision) {
+  const chosen = decision.candidates.find((c) => c.chosen);
+  const pillar = chosen.io >= chosen.cpu ? "page I/O" : "row-CPU";
+  const rejected = decision.candidates
+    .filter((c) => !c.chosen)
+    .sort((a, b) => a.cost - b.cost)
+    .map((c) => `${c.name} ~${formatCost(c.cost)} (${(c.cost / chosen.cost).toFixed(1)}×)`);
+  return (
+    `Chosen: ${chosen.name} at cost ${formatCost(chosen.cost)} ` +
+    `(io ${formatCost(chosen.io)} + cpu ${formatCost(chosen.cpu)}, ${pillar}-dominated)` +
+    (rejected.length ? ` — beat ${rejected.join(", ")}. ` : ". ") +
+    "Lowest total of the io + cpu pillars wins."
+  );
+}
+
+// The specific rule that placed a non-CBO node, grounded in its real
+// EXPLAIN numbers where available — this is the "calculation" for RULE
+// nodes: there isn't a cost comparison, so the reasoning is structural.
+function ruleReason(node, driverFamily) {
+  const driverName = DRIVER_LABEL[driverFamily] ?? "the database";
+  let reason;
+  if (node.kind === "scan" && chosenScanIndex(node.label) < 0) {
+    const known = SCAN_CANDIDATES[driverFamily].map((c) => c[0]).join(", ");
+    reason = `"${node.label}" isn't one of the access methods this simulator prices for ${driverName} (${known}), so no cost comparison ran here — the database may still have costed it internally, this tool just doesn't model that candidate set.`;
+  } else if (node.kind === "join" && chosenJoinIndex(node.label) < 0) {
+    const known = JOIN_CANDIDATES[driverFamily].map((c) => c[0]).join(", ");
+    reason = `"${node.label}" isn't one of the join algorithms this simulator prices for ${driverName} (${known}), so no cost comparison ran here.`;
+  } else if (node.kind === "limit") {
+    reason =
+      "A row cap is applied to whatever the child plan already produces — capping isn't a strategy to price, so there are no candidates to compare.";
+  } else if (node.kind === "sort") {
+    reason = node.details[0]
+      ? `Forced by ${node.details[0]} — no access path beneath it returns pre-sorted rows, so an explicit sort is inserted. There's no alternative "how to sort" to weigh.`
+      : "An explicit sort is inserted because nothing beneath it returns pre-sorted rows. There's no alternative sort strategy to weigh.";
+  } else if (node.kind === "agg") {
+    reason =
+      "The aggregate runs over whatever order the input already arrives in — the optimizer isn't choosing between competing aggregation strategies here.";
+  } else if (node.kind === "buffer") {
+    reason =
+      "Materialization/hashing is inserted structurally once the strategy above it is already fixed — it isn't priced on its own.";
+  } else if (node.kind === "parallel") {
+    reason =
+      "Parallel workers mirror whatever plan was already chosen beneath them — the degree of parallelism isn't one of the priced candidates here.";
+  } else {
+    reason =
+      "This operator is mechanically required by the query shape — the optimizer had nothing to compare it against.";
+  }
+  if (node.costTotal != null) {
+    reason += ` Its fixed cost (${formatCost(node.costTotal)}${
+      node.estRows != null ? `, ~${formatRows(node.estRows)} rows` : ""
+    }) is inherited from its input, not compared against alternatives.`;
+  }
+  return reason;
+}
+
+const RESOLUTION_COPY = {
+  cbo: { label: "CBO", icon: Scale },
+  rule: { label: "RULE", icon: Workflow },
+};
+
+const DRIVER_COST_NOTE = {
+  mysql:
+    "MySQL's cost-based optimizer prices candidates in cost units derived from estimated page I/O and row-evaluation cost constants (see optimizer_switch, cost model tables).",
+  postgres:
+    "PostgreSQL's cost-based optimizer prices candidates in abstract units combining estimated disk I/O (seq_page_cost / random_page_cost) and CPU (cpu_tuple_cost, cpu_index_tuple_cost).",
+};
+
 function deriveDecisions(root, driver) {
   const family = driver === "mysql" ? "mysql" : "postgres";
   const decisions = [];
@@ -255,15 +452,43 @@ function deriveDecisions(root, driver) {
     } else {
       return;
     }
-    const chosenCost =
-      node.costTotal ?? node.actualTotal ?? Math.max(1, node.estRows || 1);
+    const model = node.kind === "scan" ? scanCostModel(node) : joinCostModel(node);
+    const chosenRaw = model[chosenIdx].io + model[chosenIdx].cpu;
+    // Anchor the winner's bar to the DB's real estimate when we have it, then
+    // price every alternative with the same model so the ratios are meaningful
+    // rather than fabricated.
+    const realChosen = node.costTotal ?? node.actualTotal ?? null;
+    const anchor = realChosen != null && chosenRaw > 0 ? realChosen / chosenRaw : 1;
     const candidates = candidateSet.map(([name, reason], idx) => {
-      if (idx === chosenIdx)
-        return { name, reason, cost: chosenCost, chosen: true };
-      const seed = hashString(`${node.label}:${name}`);
-      const mult = 1.7 + (seed % 100) / 38; // deterministic 1.7x..4.3x
-      return { name, reason, cost: chosenCost * mult, chosen: false };
+      const m = model[idx];
+      const io = m.io * anchor;
+      const cpu = m.cpu * anchor;
+      return {
+        name,
+        reason,
+        io,
+        cpu,
+        ioFormula: m.ioFormula,
+        cpuFormula: m.cpuFormula,
+        cpuNote: m.cpuNote,
+        cost: io + cpu,
+        examined: m.examined,
+        returned: m.returned,
+        chosen: idx === chosenIdx,
+      };
     });
+    // The DB already committed to chosenIdx, so the visualization must show it
+    // as cheapest. The model reproduces that for typical inputs; this guards the
+    // rare case where our coarse assumptions would otherwise contradict reality.
+    const chosen = candidates[chosenIdx];
+    for (const c of candidates) {
+      if (!c.chosen && c.cost <= chosen.cost) {
+        const scale = (chosen.cost * 1.1) / c.cost;
+        c.io *= scale;
+        c.cpu *= scale;
+        c.cost *= scale;
+      }
+    }
     decisions.push({ title, node, candidates });
   };
   if (root) walk(root);
@@ -368,7 +593,7 @@ const PHASE_LABEL = {
   done: "Summary",
 };
 
-function PlanNodeCard({ node, active, speed }) {
+function PlanNodeCard({ node, active, speed, resolution, reason, inspected, onInspect }) {
   const target = node.actualRows != null ? node.actualRows * node.loops : null;
   const rows = useCountUp(target ?? 0, active && target != null, 900 / speed);
   const est = node.estRows;
@@ -397,6 +622,25 @@ function PlanNodeCard({ node, active, speed }) {
         <span className="planNodeKind">{KIND_LABEL[node.kind]}</span>
         <span className="planNodeLabel">{node.label}</span>
       </div>
+      {resolution &&
+        (() => {
+          const { label, icon: Icon } = RESOLUTION_COPY[resolution];
+          return (
+            <button
+              type="button"
+              className={`planNodeOpt ${resolution} ${inspected ? "inspected" : ""}`}
+              title={reason}
+              onClick={(e) => {
+                e.stopPropagation();
+                onInspect();
+              }}
+            >
+              <Icon size={10} />
+              {label}
+              <span className="planNodeOptHint">calc</span>
+            </button>
+          );
+        })()}
       <div className="planNodeStats">
         {node.neverExecuted ? (
           <span className="planNodeMuted">never executed</span>
@@ -438,7 +682,7 @@ function PlanNodeCard({ node, active, speed }) {
   );
 }
 
-function DecisionCard({ decision, settled, compact }) {
+function DecisionCard({ decision, settled, compact, driverFamily }) {
   const maxCost = Math.max(...decision.candidates.map((c) => c.cost));
   if (compact) {
     const chosen = decision.candidates.find((c) => c.chosen);
@@ -450,14 +694,21 @@ function DecisionCard({ decision, settled, compact }) {
       </div>
     );
   }
+  const { node } = decision;
   return (
     <div className="decisionCard" key={decision.title + decision.node.label}>
       <div className="decisionTitle">
         {decision.title}
-        <small>comparing estimated cost of each strategy</small>
+        <span className="decisionOptBadge">
+          <Scale size={10} /> Cost-Based Optimizer
+        </span>
+        <small>
+          {DRIVER_COST_NOTE[driverFamily] ?? DRIVER_COST_NOTE.postgres}
+        </small>
       </div>
       {decision.candidates.map((candidate) => {
-        const width = Math.max(7, (candidate.cost / maxCost) * 100);
+        const ioW = (candidate.io / maxCost) * 100;
+        const cpuW = (candidate.cpu / maxCost) * 100;
         return (
           <div
             key={candidate.name}
@@ -469,21 +720,68 @@ function DecisionCard({ decision, settled, compact }) {
               <span>{candidate.name}</span>
             </div>
             <div className="candidateTrack">
-              <div className="candidateBar" style={{ width: `${width}%` }} />
+              <div
+                className="candidateBar io"
+                style={{ width: `${Math.max(1, ioW)}%` }}
+                title={`page I/O ${formatCost(candidate.io)}`}
+              />
+              <div
+                className="candidateBar cpu"
+                style={{ width: `${Math.max(1, cpuW)}%` }}
+                title={`row CPU ${formatCost(candidate.cpu)}`}
+              />
               <span className="candidateCost">
-                {candidate.cost >= 100
-                  ? Math.round(candidate.cost).toLocaleString()
-                  : candidate.cost.toFixed(2)}
+                {formatCost(candidate.cost)}
                 {!candidate.chosen && <em> est.</em>}
               </span>
             </div>
+            <div className="candidateBreakdown">
+              <span className="pillar io">
+                <i /> I/O {formatCost(candidate.io)}
+              </span>
+              <span className="pillar cpu">
+                <i /> CPU {formatCost(candidate.cpu)}
+              </span>
+              <span className="pillarRows">
+                examines {formatRows(candidate.examined)} → returns{" "}
+                {formatRows(candidate.returned)} rows
+              </span>
+            </div>
+            <div className="candidateFormula">
+              <span>I/O = {candidate.ioFormula}</span>
+              <span>CPU = {candidate.cpuFormula}</span>
+              {candidate.cpuNote && (
+                <span className="formulaNote">{candidate.cpuNote}</span>
+              )}
+            </div>
             <div className="candidateReason">{candidate.reason}</div>
+            {candidate.chosen ? (
+              <div className="candidateMeta">
+                {node.costStart != null && (
+                  <span>
+                    DB estimate: startup {node.costStart.toFixed(2)} → total{" "}
+                    {node.costTotal.toFixed(2)}
+                  </span>
+                )}
+                {node.estRows != null && (
+                  <span>~{formatRows(node.estRows)} rows estimated</span>
+                )}
+              </div>
+            ) : (
+              <div className="candidateMeta muted">
+                modeled from the same rows — EXPLAIN only reports the winner, so
+                this is priced with the io + cpu cost model, not measured
+              </div>
+            )}
           </div>
         );
       })}
       {settled && (
         <div className="decisionVerdict">
-          <Check size={12} /> lowest estimated cost wins
+          <Check size={12} /> lowest total of the two pillars (page I/O + row
+          CPU) wins — this is what distinguishes a cost-based optimizer from a
+          rule-based one, which would apply a fixed heuristic (e.g. "always
+          prefer an index") with no cost comparison at all
         </div>
       )}
     </div>
@@ -505,6 +803,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
   const [rewriteStep, setRewriteStep] = useState(0);
   const [execStep, setExecStep] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [inspectedNode, setInspectedNode] = useState(null);
   const treeScrollRef = useRef(null);
 
   const clampZoom = (z) => Math.min(2, Math.max(0.35, z));
@@ -528,14 +827,22 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
   }, [sqlText]);
 
   const supported = SUPPORTED_DRIVERS.includes(connection?.driver);
+  const driverFamily = connection?.driver === "mysql" ? "mysql" : "postgres";
   const decisions = useMemo(
     () => (plan?.root ? deriveDecisions(plan.root, connection?.driver) : []),
     [plan, connection?.driver],
+  );
+  const decisionsByNode = useMemo(
+    () => new Map(decisions.map((d) => [d.node, d])),
+    [decisions],
   );
   const layout = useMemo(
     () => (plan?.root ? layoutTree(plan.root) : null),
     [plan],
   );
+  useEffect(() => {
+    setInspectedNode(null);
+  }, [plan]);
   const tokens = useMemo(() => tokenizeSql(sql), [sql]);
   const clauses = useMemo(() => clauseChips(sql), [sql]);
   const firstWord = (sql.trim().match(/^[a-z]+/i)?.[0] || "").toLowerCase();
@@ -932,11 +1239,16 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                   <div className="decisionCard">
                     <div className="decisionTitle">
                       Constant lookup
+                      <span className="decisionOptBadge rule">
+                        <Workflow size={10} /> Rule-Based Shortcut
+                      </span>
                       <small>
                         A unique-key equality (like <code>WHERE id = …</code>)
                         pins down at most one row, so the row is fetched during
                         optimization itself — there are no alternative access
-                        paths or join orders to compare.
+                        paths or join orders to compare. This is a fixed rule
+                        (RBO-style), not a cost comparison: no CBO pricing runs
+                        at all here.
                       </small>
                     </div>
                   </div>
@@ -947,7 +1259,11 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                 <div className="planStage">
                   <div className="stageHint">
                     Bottom-up, the optimizer prices every strategy for each
-                    table and join, keeping the cheapest at each step.
+                    table and join, keeping the cheapest at each step — this
+                    is cost-based optimization (CBO). Steps with only one
+                    possible shape (a <code>LIMIT</code>, a filter, a
+                    unique-key lookup) skip pricing entirely and are marked{" "}
+                    <b>RULE</b> instead.
                     <em>
                       {" "}
                       Rejected costs are illustrative — the database only
@@ -960,12 +1276,19 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                         Decision {decisionStep + 1} of {decisions.length}
                       </div>
                       {decisions.slice(0, decisionStep).map((d, i) => (
-                        <DecisionCard key={i} decision={d} compact settled />
+                        <DecisionCard
+                          key={i}
+                          decision={d}
+                          compact
+                          settled
+                          driverFamily={driverFamily}
+                        />
                       ))}
                     </div>
                     <DecisionCard
                       decision={decisions[decisionStep]}
                       settled={decisionSettled}
+                      driverFamily={driverFamily}
                     />
                   </div>
                 </div>
@@ -1067,17 +1390,64 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                           );
                         })}
                       </svg>
-                      {layout.nodes.map((node, i) => (
-                        <PlanNodeCard
-                          key={i}
-                          node={node}
-                          speed={speed}
-                          active={phase === "done" || node.order < execStep}
-                        />
-                      ))}
+                      {layout.nodes.map((node, i) => {
+                        const resolution = nodeResolution(node, decisionsByNode);
+                        return (
+                          <PlanNodeCard
+                            key={i}
+                            node={node}
+                            speed={speed}
+                            active={phase === "done" || node.order < execStep}
+                            resolution={resolution}
+                            reason={
+                              resolution === "cbo"
+                                ? cboCalculation(decisionsByNode.get(node))
+                                : ruleReason(node, driverFamily)
+                            }
+                            inspected={inspectedNode === node}
+                            onInspect={() =>
+                              setInspectedNode((cur) => (cur === node ? null : node))
+                            }
+                          />
+                        );
+                      })}
                         </div>
                       </div>
                     </div>
+                    {inspectedNode && (
+                      <div className="nodeCalcPanel">
+                        <div className="nodeCalcPanelHead">
+                          <b>{inspectedNode.label}</b>
+                          <button
+                            type="button"
+                            className="nodeCalcClose"
+                            onClick={() => setInspectedNode(null)}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                        {decisionsByNode.has(inspectedNode) ? (
+                          <DecisionCard
+                            decision={decisionsByNode.get(inspectedNode)}
+                            settled
+                            driverFamily={driverFamily}
+                          />
+                        ) : (
+                          <div className="decisionCard">
+                            <div className="decisionTitle">
+                              How this step was placed
+                              <span className="decisionOptBadge rule">
+                                <Workflow size={10} /> Rule-Applied — no CBO
+                                pricing
+                              </span>
+                            </div>
+                            <p className="nodeCalcRuleText">
+                              {ruleReason(inspectedNode, driverFamily)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {phase === "done" && summary && (
                     <div className="executeSummary">
