@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Code2,
   Database,
+  KeyRound,
   Table2,
   View,
   Activity,
@@ -55,6 +56,7 @@ export function SidebarTree({
   expandedObjects,
   connectedConnections,
   selected,
+  objectFilter,
   onSelectConnection,
   onToggleConnection,
   onToggleObject,
@@ -64,10 +66,16 @@ export function SidebarTree({
   onNewQuery,
   onContextMenu,
 }) {
+  const filterTerm = (objectFilter || "").trim().toLowerCase();
+  const matchesFilter = (item) =>
+    !filterTerm || String(item?.name || "").toLowerCase().includes(filterTerm);
+
   return (
     <div className="objectTree sidebarTree">
       {connections.map((conn) => {
-        const isExpanded = expandedConnections[conn.id];
+        const isExpanded =
+          expandedConnections[conn.id] ||
+          (!!filterTerm && selected?.id === conn.id);
         const detail = details[conn.id];
         const isConnected = connectedConnections[conn.id];
 
@@ -80,18 +88,34 @@ export function SidebarTree({
           ...table,
           objectType: normalizeObjectType(table.type),
         }));
-        const tables = allObjects.filter(
-          (table) => table.objectType === "table",
+        const connIndexes = (detail?.indexes || []).filter(
+          (index) =>
+            !filterTerm ||
+            String(index.name || "").toLowerCase().includes(filterTerm) ||
+            String(index.table || "").toLowerCase().includes(filterTerm),
         );
-        const views =
+        const tables = allObjects.filter(
+          (table) =>
+            table.objectType === "table" &&
+            (matchesFilter(table) ||
+              (!!filterTerm &&
+                connIndexes.some(
+                  (index) =>
+                    String(index.table).toLowerCase() ===
+                    String(table.name).toLowerCase(),
+                ))),
+        );
+        const views = (
           detail?.views ||
-          allObjects.filter((table) => table.objectType === "view");
+          allObjects.filter((table) => table.objectType === "view")
+        ).filter(matchesFilter);
         const routines = detail?.routines || [];
-        const functions =
+        const functions = (
           detail?.functions ||
-          routines.filter((routine) => routine.type === "function");
+          routines.filter((routine) => routine.type === "function")
+        ).filter(matchesFilter);
         const procedures = routines.filter(
-          (routine) => routine.type === "procedure",
+          (routine) => routine.type === "procedure" && matchesFilter(routine),
         );
 
         return (
@@ -147,12 +171,14 @@ export function SidebarTree({
                   <ConnectionTreeInner
                     connId={conn.id}
                     driver={conn.driver}
+                    forceExpand={!!filterTerm && selected?.id === conn.id}
                     activeDatabase={detail.database}
                     databases={rawDatabases}
                     tables={tables}
                     views={views}
                     functions={functions}
                     procedures={procedures}
+                    indexes={connIndexes}
                     expanded={expandedObjects}
                     onToggle={(key) => onToggleObject(conn.id, key)}
                     onOpenDatabase={(db) => onOpenDatabase(db, conn.id)}
@@ -170,15 +196,46 @@ export function SidebarTree({
   );
 }
 
+function IndexRow({ index, deep }) {
+  const isPrimary = index.name === "PRIMARY" || /_pkey$/i.test(index.name);
+  const columnCount = String(index.columns || "")
+    .split(",")
+    .filter((part) => part.trim()).length;
+  const kind = isPrimary ? "primary" : index.unique ? "unique" : "index";
+  return (
+    <div
+      className="treeItem indexItem"
+      title={`${kind}${columnCount > 1 ? ` · composite (${columnCount} columns)` : ""} on ${index.table} (${index.columns})`}
+    >
+      <div className="treeIndent" />
+      {deep && <div className="treeIndent" />}
+      <KeyRound size={14} className={`indexIcon ${kind}`} />
+      <span className="treeKeyLabel">
+        {index.name}
+        {index.columns && (
+          <span className="indexColumns"> ({index.columns})</span>
+        )}
+      </span>
+      {isPrimary && <span className="indexBadge pk">PK</span>}
+      {!isPrimary && index.unique && <span className="indexBadge uq">UQ</span>}
+      {columnCount > 1 && (
+        <span className="indexBadge cols">{columnCount} cols</span>
+      )}
+    </div>
+  );
+}
+
 function ConnectionTreeInner({
   connId,
   driver,
+  forceExpand,
   activeDatabase,
   databases,
   tables,
   views,
   functions,
   procedures,
+  indexes,
   expanded,
   onToggle,
   onOpenDatabase,
@@ -186,6 +243,7 @@ function ConnectionTreeInner({
   onDeleteRedisKey,
   onNewQuery,
 }) {
+  const isOpen = (key) => expanded[`${connId}_${key}`] || forceExpand;
   const isRedis = driver === "redis";
   const isElasticsearch = driver === "elasticsearch";
   const isMongoDB = driver === "mongodb";
@@ -234,7 +292,7 @@ function ConnectionTreeInner({
         <div className="treeBranch">
           <button className="treeItem" onClick={() => onToggle("tables")}>
             <div className="treeChevron">
-              {expanded[`${connId}_tables`] ? (
+              {isOpen("tables") ? (
                 <ChevronDown size={14} />
               ) : (
                 <ChevronRight size={14} />
@@ -244,7 +302,7 @@ function ConnectionTreeInner({
             <span>Keys</span>
             <small>{tables.length}</small>
           </button>
-          {expanded[`${connId}_tables`] && (
+          {isOpen("tables") && (
             <div className="treeChildren">
               {tables.length === 0 && (
                 <div className="treeEmpty">No keys found</div>
@@ -331,7 +389,7 @@ function ConnectionTreeInner({
       <div className="treeBranch">
         <button className="treeItem" onClick={() => onToggle("tables")}>
           <div className="treeChevron">
-            {expanded[`${connId}_tables`] ? (
+            {isOpen("tables") ? (
               <ChevronDown size={14} />
             ) : (
               <ChevronRight size={14} />
@@ -341,25 +399,74 @@ function ConnectionTreeInner({
           <span>{isMongoDB ? "Collections" : "Tables"}</span>
           <small>{tables.length}</small>
         </button>
-        {expanded[`${connId}_tables`] && (
+        {isOpen("tables") && (
           <div className="treeChildren">
             {tables.length === 0 && (
               <div className="treeEmpty">
                 {isMongoDB ? "No collections found" : "No tables found"}
               </div>
             )}
-            {tables.map((table) => (
-              <button
-                key={`${table.schema}.${table.name}`}
-                className="treeItem"
-                onClick={() => onOpenTable(table)}
-              >
-                <div className="treeIndent" />
-                <Table2 size={14} />
-                <span>{table.name}</span>
-                {table.schema && <small>{table.schema}</small>}
-              </button>
-            ))}
+            {tables.map((table) => {
+              const canExpandIndexes =
+                driver === "postgres" || driver === "mysql";
+              const tableKey = `tableIdx_${table.schema}.${table.name}`;
+              const tableIndexes = (indexes || []).filter(
+                (index) =>
+                  String(index.table).toLowerCase() ===
+                  String(table.name).toLowerCase(),
+              );
+              return (
+                <div key={`${table.schema}.${table.name}`} className="treeBranch">
+                  <div className="tableRow">
+                    <div className="treeIndent" />
+                    {canExpandIndexes && (
+                      <span
+                        className="treeChevron"
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isOpen(tableKey)}
+                        title="Show indexes"
+                        onClick={() => onToggle(tableKey)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onToggle(tableKey);
+                          }
+                        }}
+                      >
+                        {isOpen(tableKey) ? (
+                          <ChevronDown size={14} />
+                        ) : (
+                          <ChevronRight size={14} />
+                        )}
+                      </span>
+                    )}
+                    <button
+                      className="treeItem"
+                      onClick={() => onOpenTable(table)}
+                    >
+                      <Table2 size={14} />
+                      <span>{table.name}</span>
+                      {table.schema && <small>{table.schema}</small>}
+                    </button>
+                  </div>
+                  {canExpandIndexes && isOpen(tableKey) && (
+                    <div className="treeChildren">
+                      {tableIndexes.length === 0 && (
+                        <div className="treeEmpty">No indexes</div>
+                      )}
+                      {tableIndexes.map((index) => (
+                        <IndexRow
+                          key={`${index.schema}.${index.table}.${index.name}`}
+                          index={index}
+                          deep
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -367,7 +474,7 @@ function ConnectionTreeInner({
       <div className="treeBranch">
         <button className="treeItem" onClick={() => onToggle("views")}>
           <div className="treeChevron">
-            {expanded[`${connId}_views`] ? (
+            {isOpen("views") ? (
               <ChevronDown size={14} />
             ) : (
               <ChevronRight size={14} />
@@ -377,7 +484,7 @@ function ConnectionTreeInner({
           <span>Views</span>
           <small>{views.length}</small>
         </button>
-        {expanded[`${connId}_views`] && (
+        {isOpen("views") && (
           <div className="treeChildren">
             {views.length === 0 && (
               <div className="treeEmpty">No views found</div>
@@ -403,7 +510,7 @@ function ConnectionTreeInner({
           <div className="treeBranch">
             <button className="treeItem" onClick={() => onToggle("functions")}>
               <div className="treeChevron">
-                {expanded[`${connId}_functions`] ? (
+                {isOpen("functions") ? (
                   <ChevronDown size={14} />
                 ) : (
                   <ChevronRight size={14} />
@@ -413,7 +520,7 @@ function ConnectionTreeInner({
               <span>Functions</span>
               <small>{functions.length}</small>
             </button>
-            {expanded[`${connId}_functions`] && (
+            {isOpen("functions") && (
               <div className="treeChildren">
                 {functions.length === 0 && (
                   <div className="treeEmpty">No functions found</div>
@@ -436,7 +543,7 @@ function ConnectionTreeInner({
           <div className="treeBranch">
             <button className="treeItem" onClick={() => onToggle("procedures")}>
               <div className="treeChevron">
-                {expanded[`${connId}_procedures`] ? (
+                {isOpen("procedures") ? (
                   <ChevronDown size={14} />
                 ) : (
                   <ChevronRight size={14} />
@@ -446,7 +553,7 @@ function ConnectionTreeInner({
               <span>Procedures</span>
               <small>{procedures.length}</small>
             </button>
-            {expanded[`${connId}_procedures`] && (
+            {isOpen("procedures") && (
               <div className="treeChildren">
                 {procedures.length === 0 && (
                   <div className="treeEmpty">No procedures found</div>

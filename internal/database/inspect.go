@@ -263,6 +263,49 @@ func mysqlIndexes(ctx context.Context, db *sql.DB, database, table string) ([]In
 	return scanIndexes(rows)
 }
 
+func postgresAllIndexes(ctx context.Context, db *sql.DB) ([]IndexInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select schemaname, tablename, indexname,
+			regexp_replace(indexdef, '^.*\((.*)\)$', '\1'),
+			indexdef ilike 'create unique%'
+		from pg_indexes
+		where schemaname not in ('pg_catalog', 'information_schema')
+		order by tablename, indexname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanIndexInfos(rows)
+}
+
+func mysqlAllIndexes(ctx context.Context, db *sql.DB, database string) ([]IndexInfo, error) {
+	rows, err := db.QueryContext(ctx, `
+		select table_schema, table_name, index_name,
+			group_concat(column_name order by seq_in_index separator ', '),
+			non_unique = 0
+		from information_schema.statistics
+		where table_schema = coalesce(nullif(?, ''), database())
+		group by table_schema, table_name, index_name, non_unique
+		order by table_name, index_name`, database)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanIndexInfos(rows)
+}
+
+func scanIndexInfos(rows *sql.Rows) ([]IndexInfo, error) {
+	items := make([]IndexInfo, 0)
+	for rows.Next() {
+		var item IndexInfo
+		if err := rows.Scan(&item.Schema, &item.Table, &item.Name, &item.Columns, &item.Unique); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func mysqlCreateSQL(ctx context.Context, db *sql.DB, table string) (string, error) {
 	rows, err := db.QueryContext(ctx, "show create table "+quoteMySQL(table))
 	if err != nil {

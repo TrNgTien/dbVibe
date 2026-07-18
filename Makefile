@@ -38,14 +38,14 @@ build-portable:
 	ditto -c -k --sequesterRsrc --keepParent build/bin/dbVibe.app $(PORTABLE_ZIP)
 
 frontend:
-	npm --prefix frontend run dev
+	pnpm -C frontend run dev
 
 frontend-build:
-	npm --prefix frontend run build
+	pnpm -C frontend run build
 
 deps:
 	go mod download
-	npm --prefix frontend install
+	pnpm -C frontend install
 
 install-wails:
 	go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
@@ -53,5 +53,5 @@ install-wails:
 doctor:
 	go version
 	node --version
-	npm --version
+	pnpm --version
 	env -u GOROOT $(WAILS) version

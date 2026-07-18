@@ -72,5 +72,5 @@ The React UI has demo fallback data when it is opened outside Wails:
 
 ```bash
 cd sql-gui/frontend
-npm run dev
+pnpm run dev
 ```

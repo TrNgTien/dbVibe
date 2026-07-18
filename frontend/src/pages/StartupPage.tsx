@@ -35,6 +35,10 @@ export function StartupPage({
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Search for connection..."
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+              spellCheck={false}
             />
           </label>
         </div>

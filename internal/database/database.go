@@ -27,6 +27,15 @@ type ConnectionDetail struct {
 	Databases []DatabaseInfo `json:"databases"`
 	Tables    []TableInfo    `json:"tables"`
 	Routines  []RoutineInfo  `json:"routines"`
+	Indexes   []IndexInfo    `json:"indexes,omitempty"`
+}
+
+type IndexInfo struct {
+	Schema  string `json:"schema"`
+	Table   string `json:"table"`
+	Name    string `json:"name"`
+	Columns string `json:"columns"`
+	Unique  bool   `json:"unique"`
 }
 
 type DatabaseInfo struct {
@@ -163,6 +172,7 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 	var tables []TableInfo
 	var routines []RoutineInfo
 	var databases []DatabaseInfo
+	var indexes []IndexInfo
 	var err error
 	if conn.Driver == "postgres" {
 		databases, err = postgresDatabases(ctx, db)
@@ -176,6 +186,9 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 		if err == nil {
 			routines, err = postgresRoutines(ctx, db)
 		}
+		if err == nil {
+			indexes, err = postgresAllIndexes(ctx, db)
+		}
 	} else {
 		databases, err = mysqlDatabases(ctx, db)
 		if err != nil {
@@ -188,11 +201,14 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 		if err == nil {
 			routines, err = mysqlRoutines(ctx, db, conn.Database)
 		}
+		if err == nil {
+			indexes, err = mysqlAllIndexes(ctx, db, conn.Database)
+		}
 	}
 	if err != nil {
 		return ConnectionDetail{}, err
 	}
-	return ConnectionDetail{Driver: conn.Driver, Database: conn.Database, Databases: databases, Tables: tables, Routines: routines}, nil
+	return ConnectionDetail{Driver: conn.Driver, Database: conn.Database, Databases: databases, Tables: tables, Routines: routines, Indexes: indexes}, nil
 }
 
 func InspectTable(ctx context.Context, db *sql.DB, conn store.Connection, schema, table string, limit int) (TableDetail, error) {

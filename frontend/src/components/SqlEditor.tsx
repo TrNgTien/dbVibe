@@ -290,6 +290,10 @@ export function SqlEditor({
             ],
           }),
           keymap.of([
+            // Reserve Cmd/Ctrl+Enter (and Shift variant) for run/explain —
+            // without this, defaultKeymap's insertBlankLine eats the selection.
+            { key: "Mod-Enter", run: () => true },
+            { key: "Shift-Mod-Enter", run: () => true },
             ...completionKeymap,
             indentWithTab,
             ...defaultKeymap,

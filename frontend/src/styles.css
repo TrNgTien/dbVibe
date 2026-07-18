@@ -529,6 +529,55 @@ h3 {
   min-height: 38px;
 }
 
+.editorTarget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  padding: 3px 10px;
+  border: 1px solid #2c333d;
+  border-radius: 999px;
+  background: #171c23;
+  color: #8b95a5;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.editorTarget .editorTargetSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent
+    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="%238b95a5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>')
+    no-repeat right center;
+  padding: 0 12px 0 2px;
+  font: inherit;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editorTarget .editorTargetSelect:hover {
+  color: #d7dde7;
+}
+
+.editorTarget .editorTargetConn {
+  color: #d7dde7;
+  font-weight: 600;
+}
+
+.editorTarget .editorTargetDb {
+  color: #6ea8fe;
+}
+
+.editorTarget .editorTargetSep {
+  color: #4a5261;
+}
+
 .connectionActions {
   border-top: 1px solid #2c333d;
   padding: 9px 12px;
@@ -884,6 +933,36 @@ textarea {
   flex-direction: column;
 }
 
+.resultsWorkspace {
+  min-height: 160px;
+}
+
+.rowsResizer {
+  flex: 0 0 auto;
+  height: 6px;
+  margin: -3px 0 3px;
+  border-radius: 3px;
+  cursor: row-resize;
+}
+
+.rowsResizer:hover,
+.rowsResizer:active {
+  background: #35507d;
+}
+
+.ddlModal {
+  width: min(1240px, calc(100vw - 56px));
+}
+
+.ddlModalBody {
+  padding: 12px;
+  overflow: auto;
+}
+
+.ddlModalBody .mini {
+  max-height: calc(100vh - 220px);
+}
+
 .content {
   flex: 1;
   min-height: 0;
@@ -993,6 +1072,96 @@ textarea {
   color: #7f8996;
 }
 
+.tableRow {
+  display: flex;
+  align-items: center;
+}
+
+.tableRow .treeChevron {
+  padding: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #7f8996;
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.tableRow .treeChevron:hover {
+  background: #2c333d;
+  color: #e8edf2;
+}
+
+.tableRow .treeItem {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.indexItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.indexItem .treeKeyLabel {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.indexItem small {
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.indexItem .indexColumns {
+  color: #7f8996;
+  font-size: 11px;
+}
+
+.indexIcon.primary {
+  color: #f0c84b;
+}
+
+.indexIcon.unique {
+  color: #6ea8fe;
+}
+
+.indexBadge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  border: 1px solid #333a44;
+}
+
+.indexBadge.pk {
+  color: #f0c84b;
+  border-color: #6b5a1e;
+  background: rgb(240 200 75 / 0.1);
+}
+
+.indexBadge.uq {
+  color: #6ea8fe;
+  border-color: #2c4a7d;
+  background: rgb(110 168 254 / 0.1);
+}
+
+.indexBadge.cols {
+  color: #95a0ad;
+  background: #1c2128;
+}
+
 .redisKeyItem {
   width: 100%;
   display: flex;
@@ -1089,6 +1258,22 @@ textarea {
 
 .mini h2 {
   margin-bottom: 10px;
+}
+
+.ddlHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.ddlHead h2 {
+  margin-bottom: 0;
+}
+
+.ddlHead .iconButton {
+  flex: 0 0 auto;
 }
 
 .columns,
@@ -1391,6 +1576,8 @@ pre {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .insightsTable th,

@@ -1,77 +1,97 @@
+import { snippetCompletion } from "@codemirror/autocomplete";
 import { api } from "./api";
 
+function keyword(label, detail, apply = `${label} `) {
+  return { label, detail, apply, type: "keyword" };
+}
+
 export const sqlCompletions = [
-  {
+  snippetCompletion("select ${columns} from ${table}", {
     label: "select",
     detail: "query rows",
-    apply: "select * from ",
     type: "keyword",
-  },
-  { label: "from", detail: "source table", apply: "from ", type: "keyword" },
-  { label: "where", detail: "filter rows", apply: "where ", type: "keyword" },
-  { label: "join", detail: "join table", apply: "join ", type: "keyword" },
-  {
-    label: "left join",
-    detail: "optional join",
-    apply: "left join ",
+    boost: 30,
+  }),
+  snippetCompletion("select * from ${table} limit ${100}", {
+    label: "select *",
+    detail: "preview table",
     type: "keyword",
-  },
-  {
-    label: "inner join",
-    detail: "matching join",
-    apply: "inner join ",
+    boost: 28,
+  }),
+  snippetCompletion("select count(*) from ${table}", {
+    label: "select count",
+    detail: "count rows",
     type: "keyword",
-  },
-  {
-    label: "group by",
-    detail: "aggregate groups",
-    apply: "group by ",
-    type: "keyword",
-  },
-  {
-    label: "order by",
-    detail: "sort rows",
-    apply: "order by ",
-    type: "keyword",
-  },
-  { label: "limit", detail: "cap results", apply: "limit ", type: "keyword" },
-  {
+  }),
+  snippetCompletion("insert into ${table} (${columns}) values (${values})", {
     label: "insert into",
     detail: "add rows",
-    apply: "insert into ",
     type: "keyword",
-  },
-  { label: "update", detail: "modify rows", apply: "update ", type: "keyword" },
-  {
+  }),
+  snippetCompletion(
+    "update ${table} set ${column} = ${value} where ${condition}",
+    {
+      label: "update",
+      detail: "modify rows",
+      type: "keyword",
+    },
+  ),
+  snippetCompletion("delete from ${table} where ${condition}", {
     label: "delete from",
     detail: "remove rows",
-    apply: "delete from ",
     type: "keyword",
-  },
-  {
+  }),
+  snippetCompletion(
+    "case when ${condition} then ${value} else ${fallback} end",
+    {
+      label: "case when",
+      detail: "conditional value",
+      type: "keyword",
+    },
+  ),
+  snippetCompletion(
+    "with tmp as (\n  select ${columns} from ${table}\n)\nselect * from tmp",
+    {
+      label: "with",
+      detail: "CTE subquery",
+      type: "keyword",
+    },
+  ),
+  keyword("from", "source table"),
+  keyword("where", "filter rows"),
+  snippetCompletion("join ${table} on ${condition}", {
+    label: "join",
+    detail: "join table",
+    type: "keyword",
+  }),
+  snippetCompletion("left join ${table} on ${condition}", {
+    label: "left join",
+    detail: "optional join",
+    type: "keyword",
+  }),
+  snippetCompletion("inner join ${table} on ${condition}", {
+    label: "inner join",
+    detail: "matching join",
+    type: "keyword",
+  }),
+  keyword("group by", "aggregate groups"),
+  keyword("order by", "sort rows"),
+  keyword("having", "filter groups"),
+  keyword("limit", "cap results"),
+  keyword("distinct", "unique rows"),
+  keyword("union", "combine queries"),
+  keyword("union all", "combine, keep duplicates"),
+  snippetCompletion("create table ${name} (\n  ${column} ${type}\n)", {
     label: "create table",
     detail: "define table",
-    apply: "create table ",
     type: "keyword",
-  },
-  {
-    label: "alter table",
-    detail: "change table",
-    apply: "alter table ",
-    type: "keyword",
-  },
-  {
-    label: "drop table",
-    detail: "remove table",
-    apply: "drop table ",
-    type: "keyword",
-  },
-  {
-    label: "explain analyze",
-    detail: "query plan",
-    apply: "explain analyze ",
-    type: "keyword",
-  },
+  }),
+  keyword("alter table", "change table"),
+  keyword("drop table", "remove table"),
+  keyword("truncate table", "empty table"),
+  keyword("explain analyze", "query plan"),
+  keyword("show tables", "list tables"),
+  keyword("describe", "table structure"),
   {
     label: "count(*)",
     detail: "aggregate count",
@@ -124,6 +144,7 @@ const clauseKeywords = {
   select: ["distinct", "as", "from", "case", "when"],
   condition: ["and", "or", "group by", "order by", "having", "limit"],
   order: ["asc", "desc", "nulls first", "nulls last", "limit", "offset"],
+  ddl: ["table", "index", "view", "database", "schema", "column"],
 };
 
 const reservedAliases = new Set([
@@ -301,9 +322,11 @@ function scanSql(text) {
 
 function getSqlContext(beforeCursor) {
   const normalized = beforeCursor.toLowerCase();
-  if (/\b(from|join|update|into|table)\s+[\w.$"`]*$/.test(normalized)) {
+  if (/\b(from|join|update|into|table|truncate)\s+[\w.$"`]*$/.test(normalized)) {
     return "table";
   }
+  if (/\b(drop|alter)\s+[\w]*$/.test(normalized)) return "ddl";
+  if (/\bcreate\s+(or\s+replace\s+)?[\w]*$/.test(normalized)) return "ddl";
   if (/\border\s+by\b[^;]*$/.test(normalized)) return "order";
   if (/\b(group\s+by|where|having|on|set)\b[^;]*$/.test(normalized)) {
     return "condition";
@@ -346,6 +369,10 @@ function completionOptions(detail, context, references, dotPrefix) {
       ...tableCompletionOptions(detail),
       ...keywordOptions(clauseKeywords.table),
     ]);
+  }
+
+  if (context === "ddl") {
+    return keywordOptions(clauseKeywords.ddl);
   }
 
   const columns = columnCompletionOptions(detail, references, true);
@@ -403,19 +430,20 @@ function tableCompletionOptions(detail, schema = "") {
 }
 
 function columnCompletionOptions(detail, references, qualifyMultiple) {
+  // Like DBeaver: only propose columns for tables actually referenced in the
+  // statement — never flood the list with every column of every table.
+  if (!references.length) return [];
   const tables = detail?.tables || [];
-  const scopedTables = references.length
-    ? references
-        .map((reference) =>
-          tables.find(
-            (table) =>
-              table.name.toLowerCase() === reference.table.toLowerCase() &&
-              (!reference.schema ||
-                table.schema.toLowerCase() === reference.schema.toLowerCase()),
-          ),
-        )
-        .filter(Boolean)
-    : tables;
+  const scopedTables = references
+    .map((reference) =>
+      tables.find(
+        (table) =>
+          table.name.toLowerCase() === reference.table.toLowerCase() &&
+          (!reference.schema ||
+            table.schema.toLowerCase() === reference.schema.toLowerCase()),
+      ),
+    )
+    .filter(Boolean);
   const qualify = qualifyMultiple && scopedTables.length > 1;
 
   return scopedTables.flatMap((table) => {
@@ -428,10 +456,10 @@ function columnCompletionOptions(detail, references, qualifyMultiple) {
     const qualifier = reference?.alias || reference?.table || table.name;
     return (table.columns || []).map((column) => ({
       label: qualify ? `${qualifier}.${column.name}` : column.name,
-      detail: `${table.name} ${column.type}`,
+      detail: qualify ? column.type : `${column.type} · ${table.name}`,
       apply: qualify ? `${qualifier}.${column.name}` : column.name,
       type: "property",
-      boost: references.length ? 40 : 10,
+      boost: 40,
     }));
   });
 }
@@ -449,7 +477,9 @@ function dedupeOptions(options) {
 function applyKeywordCase(options, uppercaseKeywords) {
   if (!uppercaseKeywords) return options;
   return options.map((option) => {
-    if (option.type !== "keyword") return option;
+    if (option.type !== "keyword" || typeof option.apply === "function") {
+      return option;
+    }
     return {
       ...option,
       label: option.label.toUpperCase(),

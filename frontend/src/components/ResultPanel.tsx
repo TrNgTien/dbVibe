@@ -214,7 +214,17 @@ export function ResultPanel({
   );
 }
 
-export function TableInspector({ detail }) {
+export function TableInspector({ detail, onToast }) {
+  const copyCreateSql = async () => {
+    try {
+      await navigator.clipboard.writeText(detail.createSql || "");
+      onToast?.("Copied");
+    } catch (error) {
+      console.error("Failed to copy create table SQL", error);
+      onToast?.("Copy failed");
+    }
+  };
+
   return (
     <section className="inspector">
       <div className="panel mini">
@@ -247,7 +257,16 @@ export function TableInspector({ detail }) {
         </div>
       </div>
       <div className="panel mini ddl">
-        <h2>Create Table</h2>
+        <div className="ddlHead">
+          <h2>Create Table</h2>
+          <button
+            className="iconButton"
+            title="Copy create table SQL"
+            onClick={copyCreateSql}
+          >
+            <Copy size={15} />
+          </button>
+        </div>
         <pre>{detail.createSql}</pre>
       </div>
     </section>

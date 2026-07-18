@@ -19,6 +19,7 @@ import {
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
+  X,
 } from "lucide-react";
 import "./styles.css";
 import { SqlEditor } from "./components/SqlEditor";
@@ -74,14 +75,6 @@ function sampleCommand(driver) {
   if (driver === "redis") return REDIS_SAMPLE_COMMAND;
   if (driver === "mongodb") return MONGODB_SAMPLE_COMMAND;
   return SQL_SAMPLE_COMMAND;
-}
-
-function isSampleCommand(command) {
-  return (
-    command === SQL_SAMPLE_COMMAND ||
-    command === REDIS_SAMPLE_COMMAND ||
-    command === MONGODB_SAMPLE_COMMAND
-  );
 }
 
 function quoteRedisArg(value) {
@@ -335,7 +328,17 @@ function App() {
   const [showTableDetail, setShowTableDetail] = useState(false);
   const [queries, setQueries] = useState([]);
   const [deletingQueryIds, setDeletingQueryIds] = useState(() => new Set());
-  const [sqlText, setSqlText] = useState(SQL_SAMPLE_COMMAND);
+  const [sqlTexts, setSqlTexts] = useLocalStorage("tnt-sql-editor-texts", {});
+  const editorTextKey = selected?.id || "scratch";
+  const sqlText = sqlTexts[editorTextKey] ?? sampleCommand(selected?.driver);
+  const setSqlText = (next) =>
+    setSqlTexts((current) => ({
+      ...current,
+      [editorTextKey]:
+        typeof next === "function"
+          ? next(current[editorTextKey] ?? sampleCommand(selected?.driver))
+          : next,
+    }));
   const [result, setResult] = useState(null);
   const [explain, setExplain] = useState(null);
   const [filter, setFilter] = useState("");
@@ -380,6 +383,8 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(360);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [isResizing, setIsResizing] = useState(false);
+  const [resultsHeight, setResultsHeight] = useState(0); // 0 = auto (flex)
+  const [isResizingResults, setIsResizingResults] = useState(false);
   const editorRef = useRef(null);
 
   function openSettings() {
@@ -415,6 +420,33 @@ function App() {
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, [isResizing]);
+
+  useEffect(() => {
+    if (!isResizingResults) return;
+    const onMouseMove = (e) => {
+      const next = Math.max(
+        160,
+        Math.min(window.innerHeight - e.clientY, window.innerHeight - 220),
+      );
+      setResultsHeight(next);
+    };
+    const onMouseUp = () => setIsResizingResults(false);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizingResults]);
+
+  useEffect(() => {
+    if (!showTableDetail) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setShowTableDetail(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showTableDetail]);
 
   useEffect(() => {
     setLastRedisCommand("");
@@ -535,14 +567,14 @@ function App() {
   ]);
 
   const filteredConnections = useMemo(() => {
-    const term = filter.trim().toLowerCase();
+    const term = connectionFilter.trim().toLowerCase();
     if (!term) return connections;
     return connections.filter((conn) =>
       `${conn.name}.${conn.driver}.${conn.host}.${conn.port}.${conn.database}`
         .toLowerCase()
         .includes(term),
     );
-  }, [filter, connections]);
+  }, [connectionFilter, connections]);
 
   async function run(label, action) {
     setLoading(label);
@@ -645,6 +677,11 @@ function App() {
       delete next[connId];
       return next;
     });
+    setSqlTexts((current) => {
+      const next = { ...current };
+      delete next[connId];
+      return next;
+    });
     setExpandedConnections((current) => {
       const next = { ...current };
       delete next[connId];
@@ -674,9 +711,6 @@ function App() {
   async function connect(conn = selected) {
     if (!conn?.id) return;
     setSelected(conn);
-    setSqlText((current) =>
-      isSampleCommand(current) ? sampleCommand(conn.driver) : current,
-    );
     setCreatingConnection(false);
     setEditingConnection(false);
     setDraft({ ...defaultConnection, ...conn });
@@ -716,34 +750,52 @@ function App() {
 
   async function connectDatabase(databaseName, connId = selected?.id) {
     if (!connId || !databaseName) return;
-    if (connId === selected?.id) {
-      setConnectionStatus("connecting");
+    const switchingConnection = connId !== selected?.id;
+    const conn = switchingConnection
+      ? connections.find((item) => item.id === connId)
+      : selected;
+    if (!conn) return;
+    if (switchingConnection) {
+      setSelected(conn);
+      setCreatingConnection(false);
+      setEditingConnection(false);
+      setDraft({ ...defaultConnection, ...conn });
+      setDetail(details[connId] || null);
+      setTableDetail(null);
+      setResult(null);
+      setExplain(null);
+      setWorkspaceView("query");
     }
+    setConnectionStatus("connecting");
     try {
       const next = await run("connect", () =>
         api.call("ConnectDatabase", connId, databaseName),
       );
       setDetails((current) => ({ ...current, [connId]: next }));
-      if (connId === selected?.id) {
-        setDetail(next);
-        setDraft((current) => ({ ...current, database: next.database }));
-        setTableDetail(null);
-        setResult(null);
-        setExplain(null);
-        setConnectionStatus("connected");
+      setDetail(next);
+      setDraft((current) => ({ ...current, database: next.database }));
+      setTableDetail(null);
+      setResult(null);
+      setExplain(null);
+      setConnectionStatus("connected");
+      if (switchingConnection) {
+        const savedQueries = await api.call("ListSavedQueries", connId);
+        setQueries(savedQueries || []);
       }
       setExpandedObjects((current) => ({
         ...current,
         [`${connId}_${databaseKey(databaseName)}`]: true,
+      }));
+      setExpandedConnections((current) => ({
+        ...current,
+        [connId]: true,
       }));
       setConnectedConnections((current) => ({
         ...current,
         [connId]: true,
       }));
     } catch (err) {
-      if (connId === selected?.id) {
-        setConnectionStatus("error");
-      }
+      setConnectionStatus("error");
       throw err;
     }
   }
@@ -767,6 +819,7 @@ function App() {
     if (!connId) return;
     const conn = connections.find((c) => c.id === connId);
     if (!conn) return;
+    setWorkspaceView("query");
     let activeDetail =
       connId === selected?.id ? detail || details[connId] : null;
     if (connId !== selected?.id) {
@@ -1290,11 +1343,16 @@ function App() {
                 <input
                   value={filter}
                   onChange={(event) => setFilter(event.target.value)}
-                  placeholder="Filter connections"
+                  placeholder="Filter tables"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </label>
               <SidebarTree
-                connections={filteredConnections}
+                connections={connections}
+                objectFilter={filter}
                 details={details}
                 expandedConnections={expandedConnections}
                 expandedObjects={expandedObjects}
@@ -1421,22 +1479,6 @@ function App() {
             <button title="Settings (Cmd+,)" onClick={openSettings}>
               <Settings size={16} />
             </button>
-            <button
-              title="Refresh"
-              onClick={() =>
-                selected ? connect(selected) : refreshConnections()
-              }
-            >
-              <RefreshCw size={16} />
-            </button>
-            <button
-              className="primary"
-              onClick={() => connect()}
-              disabled={!selected?.id}
-            >
-              <Database size={16} />
-              {connectionStatus === "connected" ? "Connected" : "Connect"}
-            </button>
           </div>
         </header>
 
@@ -1511,6 +1553,64 @@ function App() {
               <section className="panel queryPanel">
                 <div className="panelHead">
                   <h2>Command</h2>
+                  {selected && (
+                    <span
+                      className="editorTarget"
+                      title={`${driverLabel(selected.driver)}://${selected.host}:${selected.port}/${detail?.database || selected.database || ""}`}
+                    >
+                      <Database size={13} />
+                      <select
+                        className="editorTargetSelect editorTargetConn"
+                        value={selected.id}
+                        onChange={(e) => {
+                          const conn = connections.find(
+                            (c) => c.id === e.target.value,
+                          );
+                          if (conn && conn.id !== selected.id) connect(conn);
+                        }}
+                      >
+                        {connections.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                      {(() => {
+                        const currentDb =
+                          detail?.database || selected.database || "";
+                        const names = (detail?.databases || []).map(
+                          (db) => db.name,
+                        );
+                        if (currentDb && !names.includes(currentDb)) {
+                          names.unshift(currentDb);
+                        }
+                        if (!names.length) return null;
+                        return (
+                          <>
+                            <span className="editorTargetSep">/</span>
+                            <select
+                              className="editorTargetSelect editorTargetDb"
+                              value={currentDb}
+                              onChange={(e) => {
+                                if (
+                                  e.target.value &&
+                                  e.target.value !== currentDb
+                                ) {
+                                  connectDatabase(e.target.value);
+                                }
+                              }}
+                            >
+                              {names.map((name) => (
+                                <option key={name} value={name}>
+                                  {name}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        );
+                      })()}
+                    </span>
+                  )}
                   <div className="rowActions">
                     <button
                       onClick={() => setShowTableDetail(!showTableDetail)}
@@ -1553,12 +1653,58 @@ function App() {
 
         {!editingConnectionDetails &&
           workspaceView === "query" &&
-          (tableDetail || result || explain) && (
-            <section className="workspace">
+          tableDetail &&
+          showTableDetail && (
+            <div
+              className="modalBackdrop"
+              onMouseDown={() => setShowTableDetail(false)}
+            >
+              <div
+                className="modalPanel ddlModal"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className="modalHead">
+                  <h2>
+                    {tableDetail.table?.schema
+                      ? `${tableDetail.table.schema}.`
+                      : ""}
+                    {tableDetail.table?.name || "Table Detail"}
+                  </h2>
+                  <button
+                    className="iconButton"
+                    onClick={() => setShowTableDetail(false)}
+                    title="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="ddlModalBody">
+                  <TableInspector detail={tableDetail} onToast={showToast} />
+                </div>
+              </div>
+            </div>
+          )}
+
+        {!editingConnectionDetails &&
+          workspaceView === "query" &&
+          (result || explain) && (
+            <section
+              className="workspace resultsWorkspace"
+              style={
+                resultsHeight
+                  ? { flex: "0 0 auto", height: `${resultsHeight}px` }
+                  : undefined
+              }
+            >
+              <div
+                className="rowsResizer"
+                title="Drag to resize results"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setIsResizingResults(true);
+                }}
+              />
               <section className="content">
-                {tableDetail && showTableDetail && (
-                  <TableInspector detail={tableDetail} />
-                )}
                 <ResultPanel
                   title="Rows"
                   result={result}
