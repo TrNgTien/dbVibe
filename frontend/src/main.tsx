@@ -1449,6 +1449,7 @@ function App() {
                   disabled={
                     selected?.driver !== "mysql" &&
                     selected?.driver !== "postgres" &&
+                    selected?.driver !== "timescaledb" &&
                     selected?.driver !== "redis" &&
                     selected?.driver !== "mongodb"
                   }
@@ -1628,7 +1629,8 @@ function App() {
                       <Save size={15} /> Query
                     </button>
                     {(selected?.driver === "mysql" ||
-                      selected?.driver === "postgres") && (
+                      selected?.driver === "postgres" ||
+                      selected?.driver === "timescaledb") && (
                       <button onClick={explainAnalyze}>
                         <Activity size={15} /> Explain
                       </button>

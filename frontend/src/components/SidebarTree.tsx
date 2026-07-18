@@ -408,7 +408,9 @@ function ConnectionTreeInner({
             )}
             {tables.map((table) => {
               const canExpandIndexes =
-                driver === "postgres" || driver === "mysql";
+                driver === "postgres" ||
+                driver === "timescaledb" ||
+                driver === "mysql";
               const tableKey = `tableIdx_${table.schema}.${table.name}`;
               const tableIndexes = (indexes || []).filter(
                 (index) =>
@@ -505,7 +507,7 @@ function ConnectionTreeInner({
         )}
       </div>
 
-      {(driver === "postgres" || driver === "mysql") && (
+      {(driver === "postgres" || driver === "timescaledb" || driver === "mysql") && (
         <>
           <div className="treeBranch">
             <button className="treeItem" onClick={() => onToggle("functions")}>

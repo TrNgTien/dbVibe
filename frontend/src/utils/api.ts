@@ -3,7 +3,7 @@ export function databaseKey(name) {
 }
 
 export function defaultPort(driver) {
-  if (driver === "postgres") return 5432;
+  if (driver === "postgres" || driver === "timescaledb") return 5432;
   if (driver === "redis") return 6379;
   if (driver === "elasticsearch") return 9200;
   if (driver === "mongodb") return 27017;
@@ -12,6 +12,7 @@ export function defaultPort(driver) {
 
 export function driverLabel(driver) {
   if (driver === "postgres") return "PostgreSQL";
+  if (driver === "timescaledb") return "TimescaleDB";
   if (driver === "redis") return "Redis";
   if (driver === "elasticsearch") return "Elasticsearch";
   if (driver === "mongodb") return "MongoDB";

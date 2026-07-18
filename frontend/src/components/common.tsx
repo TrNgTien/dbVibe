@@ -1,5 +1,5 @@
 import React from "react";
-import { MySQLIcon, PostgreSQLIcon, RedisIcon, ElasticsearchIcon, MongoDBIcon } from "../icons";
+import { MySQLIcon, PostgreSQLIcon, TimescaleDBIcon, RedisIcon, ElasticsearchIcon, MongoDBIcon } from "../icons";
 import { connectionLabel, driverLabel } from "../utils/api";
 
 export function StatusDot({ status }) {
@@ -10,6 +10,8 @@ export function DriverLogo({ driver }) {
   switch (driver) {
     case "postgres":
       return <PostgreSQLIcon className="driverLogo" />;
+    case "timescaledb":
+      return <TimescaleDBIcon className="driverLogo" />;
     case "redis":
       return <RedisIcon className="driverLogo" />;
     case "elasticsearch":

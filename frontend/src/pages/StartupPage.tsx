@@ -18,7 +18,7 @@ export function StartupPage({
           <Database size={76} />
         </div>
         <h1>dbVibe</h1>
-        <p>MySQL / PostgreSQL / Redis / Elasticsearch</p>
+        <p>MySQL / PostgreSQL / TimescaleDB / Redis / Elasticsearch / MongoDB</p>
         <button className="primary startupButton" onClick={onCreate}>
           <Plus size={18} /> Create Connection
         </button>

@@ -17,6 +17,17 @@ export function PostgreSQLIcon(props) {
   );
 }
 
+export function TimescaleDBIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" {...props}>
+      <circle cx="64" cy="64" r="60" fill="#141414" />
+      <rect x="34" y="40" width="60" height="12" rx="6" fill="#FDB515" />
+      <rect x="34" y="60" width="42" height="12" rx="6" fill="#FDB515" />
+      <rect x="34" y="80" width="52" height="12" rx="6" fill="#FDB515" />
+    </svg>
+  );
+}
+
 export function RedisIcon(props) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" {...props}>

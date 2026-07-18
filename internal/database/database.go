@@ -92,7 +92,7 @@ type QueryResult struct {
 
 func Open(conn store.Connection) (*sql.DB, error) {
 	switch conn.Driver {
-	case "postgres":
+	case "postgres", "timescaledb":
 		db, err := sql.Open("pgx", postgresDSN(conn))
 		if err != nil {
 			return nil, err
@@ -117,7 +117,7 @@ func Open(conn store.Connection) (*sql.DB, error) {
 
 func TestConnection(ctx context.Context, conn store.Connection) error {
 	switch conn.Driver {
-	case "mysql", "postgres":
+	case "mysql", "postgres", "timescaledb":
 		db, err := Open(conn)
 		if err != nil {
 			return err
@@ -174,7 +174,7 @@ func InspectConnectionDatabase(ctx context.Context, db *sql.DB, conn store.Conne
 	var databases []DatabaseInfo
 	var indexes []IndexInfo
 	var err error
-	if conn.Driver == "postgres" {
+	if conn.Driver == "postgres" || conn.Driver == "timescaledb" {
 		databases, err = postgresDatabases(ctx, db)
 		if err != nil {
 			return ConnectionDetail{}, err
@@ -215,7 +215,7 @@ func InspectTable(ctx context.Context, db *sql.DB, conn store.Connection, schema
 	if limit <= 0 || limit > 1000 {
 		limit = 100
 	}
-	if conn.Driver == "postgres" {
+	if conn.Driver == "postgres" || conn.Driver == "timescaledb" {
 		return inspectPostgresTable(ctx, db, schema, table, limit)
 	}
 	return inspectMySQLTable(ctx, db, conn.Database, table, limit)
@@ -247,7 +247,7 @@ func Execute(ctx context.Context, db *sql.DB, driver, sqlText string, limit int)
 
 func ExplainAnalyze(ctx context.Context, db *sql.DB, driver, sqlText string) (QueryResult, error) {
 	query := strings.TrimSpace(strings.TrimRight(sqlText, ";"))
-	if driver == "postgres" {
+	if driver == "postgres" || driver == "timescaledb" {
 		query = "EXPLAIN (ANALYZE, BUFFERS, VERBOSE) " + query
 	} else {
 		query = "EXPLAIN ANALYZE " + query

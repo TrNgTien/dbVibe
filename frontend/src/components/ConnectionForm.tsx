@@ -32,6 +32,7 @@ export function ConnectionForm({ draft, setDraft }) {
           {[
             { id: "mysql", name: "MySQL" },
             { id: "postgres", name: "PostgreSQL" },
+            { id: "timescaledb", name: "TimescaleDB" },
             { id: "redis", name: "Redis" },
             { id: "elasticsearch", name: "Elasticsearch" },
             { id: "mongodb", name: "MongoDB" },
@@ -127,7 +128,7 @@ export function ConnectionForm({ draft, setDraft }) {
           </button>
         </div>
       </label>
-      {draft.driver === "postgres" ? (
+      {draft.driver === "postgres" || draft.driver === "timescaledb" ? (
         <label>
           SSL mode
           <select

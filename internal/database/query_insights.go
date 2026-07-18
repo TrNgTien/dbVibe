@@ -74,7 +74,7 @@ func InspectQueryInsights(ctx context.Context, db *sql.DB, conn store.Connection
 	var insights QueryInsights
 	var err error
 	switch conn.Driver {
-	case "postgres":
+	case "postgres", "timescaledb":
 		insights, err = postgresQueryInsights(ctx, db, limit)
 	case "mysql":
 		insights, err = mysqlQueryInsights(ctx, db, conn.Database, limit)
