@@ -30,7 +30,11 @@ dev:
 	env -u GOROOT $(WAILS) dev
 
 build:
-	env -u GOROOT $(WAILS) build -clean &&  cp -R build/bin/dbVibe.app /Applications/
+	osascript -e 'quit app "dbVibe"' 2>/dev/null || true
+	env -u GOROOT $(WAILS) build -clean
+	cp -R build/bin/dbVibe.app /Applications/
+	ls -d /Applications/dbVibe.app && stat -f "%Sm" /Applications/dbVibe.app
+	open /Applications/dbVibe.app
 
 build-portable:
 	env -u GOROOT $(WAILS) build -clean -platform darwin/universal
