@@ -4,7 +4,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Maximize,
   Pause,
   Play,
   RotateCcw,
@@ -803,8 +802,11 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
   const [rewriteStep, setRewriteStep] = useState(0);
   const [execStep, setExecStep] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [inspectedNode, setInspectedNode] = useState(null);
   const treeScrollRef = useRef(null);
+  const nodeCalcPanelRef = useRef(null);
+  const panRef = useRef({ active: false, startX: 0, startY: 0, panX: 0, panY: 0 });
 
   const clampZoom = (z) => Math.min(2, Math.max(0.35, z));
 
@@ -820,6 +822,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
         ),
       ),
     );
+    setPan({ x: 0, y: 0 });
   }
 
   useEffect(() => {
@@ -1030,6 +1033,65 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, [executing, layout]);
+
+  // Fit the plan to the visible pane as soon as it's ready, instead of
+  // defaulting to 100% (which overflows the container for anything but a
+  // tiny plan and forces the canvas to feel like it's blown out to fullscreen).
+  useEffect(() => {
+    if (!executing || !layout) return;
+    const id = requestAnimationFrame(() => fitZoom());
+    return () => cancelAnimationFrame(id);
+  }, [executing, layout]);
+
+  // Click-and-drag panning on the plan-tree canvas.
+  useEffect(() => {
+    const el = treeScrollRef.current;
+    if (!el) return;
+    const onMouseDown = (e) => {
+      if (e.button !== 0 || e.target.closest("button")) return;
+      panRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      };
+      el.classList.add("panning");
+    };
+    const onMouseMove = (e) => {
+      if (!panRef.current.active) return;
+      setPan({
+        x: panRef.current.panX + (e.clientX - panRef.current.startX),
+        y: panRef.current.panY + (e.clientY - panRef.current.startY),
+      });
+    };
+    const onMouseUp = () => {
+      if (!panRef.current.active) return;
+      panRef.current.active = false;
+      el.classList.remove("panning");
+    };
+    el.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      el.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [executing, layout, pan]);
+
+  // Close the cost-breakdown popup on any click outside it (badge clicks
+  // already stopPropagation, so this only fires for genuine outside clicks).
+  useEffect(() => {
+    if (!inspectedNode) return;
+    const onDocMouseDown = (e) => {
+      if (nodeCalcPanelRef.current && !nodeCalcPanelRef.current.contains(e.target)) {
+        setInspectedNode(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [inspectedNode]);
   const summary = plan
     ? {
         planning: plan.planningMs,
@@ -1318,9 +1380,6 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                       >
                         <ZoomIn size={13} />
                       </button>
-                      <button title="Fit to view" onClick={fitZoom}>
-                        <Maximize size={13} />
-                      </button>
                     </div>
                     <div className="planTreeScroll" ref={treeScrollRef}>
                       <div
@@ -1328,6 +1387,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                         style={{
                           width: layout.width * zoom,
                           height: layout.height * zoom,
+                          transform: `translate(${pan.x}px, ${pan.y}px)`,
                         }}
                       >
                         <div
@@ -1415,7 +1475,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                       </div>
                     </div>
                     {inspectedNode && (
-                      <div className="nodeCalcPanel">
+                      <div className="nodeCalcPanel" ref={nodeCalcPanelRef}>
                         <div className="nodeCalcPanelHead">
                           <b>{inspectedNode.label}</b>
                           <button

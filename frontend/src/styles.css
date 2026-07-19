@@ -2569,6 +2569,8 @@ td {
 .optimizerCanvas {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: 12px 14px 16px;
 }
@@ -3085,9 +3087,15 @@ td {
   border: 1px solid #222831;
   border-radius: 10px;
   display: flex;
+  cursor: grab;
   background:
     radial-gradient(circle at 1px 1px, #1d232c 1px, transparent 0) 0 0 / 22px 22px,
     #14181e;
+}
+
+.planTreeScroll.panning {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .planTreeZoom {
