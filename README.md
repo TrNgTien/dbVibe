@@ -21,6 +21,23 @@ The MySQL binlog trace viewer requires the `mysqlbinlog` client:
 brew install mysql-client
 ```
 
+## Why dbVibe
+
+| | dbVibe | DBeaver | MySQL Workbench |
+|---|---|---|---|
+| Runtime | Native Go binary (Wails), no bundled JVM/Electron | Bundles a JVM | Qt-based, MySQL-only |
+| App size | ~21 MB (~15 MB portable zip) | Several hundred MB with JRE | ~300 MB |
+| Config storage | Single local `store.json` file | Embedded workspace metadata DB | Local XML/SQLite workspace |
+| Engines | Postgres, MySQL, MongoDB, Redis, Elasticsearch | Many (via JDBC plugins) | MySQL only |
+| Query plan | Animated, interactive optimizer with per-step I/O and CPU cost formulas | Static `EXPLAIN` text/tree | Static `EXPLAIN` visual (non-interactive) |
+| Binlog trace viewer | Built in (`mysqlbinlog`) | Not built in | Not built in |
+
+dbVibe trades broad feature coverage for a small, fast, native client focused on the debugging loop: connect, run a query, see why it's slow, fix it.
+
+![Query Optimizer Lab comparing candidate access paths with I/O and CPU cost breakdowns](docs/assets/query-optimizer.png)
+
+The Query Optimizer Lab walks a real `EXPLAIN ANALYZE` through parse, rewrite, cost-based optimization, and execution — at the optimize step it shows the exact candidates the planner priced (e.g. Seq Scan vs. Index Scan vs. Bitmap Heap Scan) with their I/O and CPU cost formulas, not just the winning plan.
+
 ## Install (macOS)
 
 Clone or download this repo, then run:
