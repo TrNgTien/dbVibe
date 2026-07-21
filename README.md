@@ -21,17 +21,35 @@ The MySQL binlog trace viewer requires the `mysqlbinlog` client:
 brew install mysql-client
 ```
 
-## Run the portable app (macOS)
+## Install (macOS)
+
+Clone or download this repo, then run:
+
+```bash
+./install.sh
+```
+
+This unzips `build/portable/dbVibe-macos.zip`, clears the Gatekeeper quarantine
+flag (the build is unsigned), installs `dbVibe.app` to `/Applications`, and
+launches it. Re-running it updates an existing install.
+
+If you only have the zip (no repo checkout), pass its path:
+
+```bash
+./install.sh /path/to/dbVibe-macos.zip
+```
+
+### Manual install
+
+Prefer to do it by hand instead of running a script?
 
 1. Download `build/portable/dbVibe-macos.zip`.
 2. Unzip it.
-3. Open `dbVibe.app`.
-
-If macOS blocks the app after download:
-
-```bash
-xattr -dr com.apple.quarantine dbVibe.app
-```
+3. Drag `dbVibe.app` to `/Applications`.
+4. If macOS blocks the app on first launch, clear quarantine:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/dbVibe.app
+   ```
 
 ## Develop
 

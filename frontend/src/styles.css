@@ -23,6 +23,18 @@ body {
   min-width: 1100px;
   min-height: 780px;
   background: #121418;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea,
+.sqlEditor,
+.sqlEditor *,
+.resultScroll table,
+.resultScroll table * {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 button,

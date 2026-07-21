@@ -24,10 +24,9 @@ Build the portable universal-macOS zip and replace the artifact in `build/portab
    It must contain `dbVibe.app` and have a non-trivial size (tens of MB), with a
    modification time from this build.
 
-3. **Report** in 1–2 sentences: zip path and size. Include the install note for
-   whoever receives the zip: unzip, drag `dbVibe.app` to `/Applications`; the build
-   is unsigned, so on first launch right-click → Open (or run
-   `xattr -cr /Applications/dbVibe.app` once) to get past Gatekeeper.
+3. **Report** in 1–2 sentences: zip path and size. Point whoever receives the zip
+   at `./install.sh` (repo root) to install it to `/Applications` — it handles
+   unzipping and clearing the Gatekeeper quarantine flag for this unsigned build.
 
 ## Notes
 
