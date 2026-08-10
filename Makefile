@@ -3,7 +3,7 @@
 WAILS_VERSION ?= v2.10.2
 WAILS ?= go run github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
 PORTABLE_DIR ?= build/portable
-PORTABLE_ZIP ?= $(PORTABLE_DIR)/dbVibe-macos.zip
+PORTABLE_ZIP ?= $(PORTABLE_DIR)/dbVibe-macos-universal.zip
 
 export GOCACHE ?= $(CURDIR)/.gocache
 export GOMODCACHE ?= $(CURDIR)/.gomodcache

@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-universal
+            os: macos-latest
+            platform: darwin/universal
+            asset: dbVibe-macos-universal.zip
+            package: |
+              ditto -c -k --sequesterRsrc --keepParent build/bin/dbVibe.app artifacts/dbVibe-macos-universal.zip
+          - name: windows-amd64
+            os: windows-latest
+            platform: windows/amd64
+            asset: dbVibe-windows-amd64.zip
+            package: |
+              Compress-Archive -Path build\bin\dbVibe.exe -DestinationPath artifacts\dbVibe-windows-amd64.zip
+          - name: linux-amd64
+            os: ubuntu-latest
+            platform: linux/amd64
+            asset: dbVibe-linux-amd64.tar.gz
+            package: |
+              tar -C build/bin -czf artifacts/dbVibe-linux-amd64.tar.gz dbVibe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.1.1
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build ${{ matrix.name }}
+        run: wails build -clean -platform ${{ matrix.platform }}
+        env:
+          CGO_ENABLED: "1"
+
+      - name: Prepare artifact dir
+        shell: bash
+        run: mkdir -p artifacts
+
+      - name: Package ${{ matrix.name }}
+        run: ${{ matrix.package }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: artifacts/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          files: artifacts/*
+          generate_release_notes: true

@@ -1,6 +1,7 @@
 .gocache*
 .gomodcache
 build/bin
+build/portable
 frontend/.npm-cache
 frontend/dist
 frontend/node_modules

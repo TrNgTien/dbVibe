@@ -1,35 +1,40 @@
 ---
 name: ship
-description: Ship a new portable dbVibe build — runs make build-portable and replaces build/portable/dbVibe-macos.zip, the artifact other people download and install. Use when the user wants to ship, release, or package a new portable version.
+description: Ship a new dbVibe release — tag a version so the GitHub Actions release workflow builds the matrix (macOS universal, Windows amd64, Linux amd64) and publishes a GitHub Release with auto-generated notes. Use when the user wants to ship, release, or publish a new version.
 ---
 
-# Ship dbVibe (portable zip)
+# Ship dbVibe (GitHub Release)
 
-Build the portable universal-macOS zip and replace the artifact in `build/portable/`.
+Versioned builds are published via GitHub Actions. Shipping = tagging a version
+and pushing it; the `.github/workflows/release.yml` workflow does the rest.
 
 ## Steps
 
-1. **Build** from the repo root (generous timeout, 600000 ms):
+1. **Verify the tree builds** before tagging:
    ```bash
-   make build-portable
+   go test ./...
+   pnpm -C frontend run build
    ```
-   This runs `wails build -clean -platform darwin/universal` (arm64 + x86_64) and
-   overwrites `build/portable/dbVibe-macos.zip`.
 
-2. **Sanity-check** the new zip:
+2. **Create and push the tag.** The tag name drives the release:
    ```bash
-   ls -lh build/portable/dbVibe-macos.zip
-   unzip -l build/portable/dbVibe-macos.zip | head
+   git tag v1.0.0
+   git push origin v1.0.0
    ```
-   It must contain `dbVibe.app` and have a non-trivial size (tens of MB), with a
-   modification time from this build.
+   Use a higher version than the latest tag (`git tag` / `git describe --tags`).
 
-3. **Report** in 1–2 sentences: zip path and size. Point whoever receives the zip
-   at `./install.sh` (repo root) to install it to `/Applications` — it handles
-   unzipping and clearing the Gatekeeper quarantine flag for this unsigned build.
+3. **Confirm the release** at
+   https://github.com/TrNgTien/dbVibe/releases — the workflow builds
+   `dbVibe-macos-universal.zip`, `dbVibe-windows-amd64.zip`, and
+   `dbVibe-linux-amd64.tar.gz`, then publishes them as a GitHub Release with
+   generated release notes. It takes a few minutes; check the Actions tab for
+   the "Release" workflow run.
 
 ## Notes
 
-- One zip serves both Apple Silicon and Intel Macs (universal build).
-- Do not tag, push, or publish anywhere — shipping here means refreshing
-  `build/portable/dbVibe-macos.zip` only.
+- The macOS zip is unsigned; `./install.sh` clears the Gatekeeper quarantine
+  flag. Notarization requires an Apple Developer cert and is not wired up.
+- The one-line install in the README downloads the latest release asset via
+  `https://github.com/TrNgTien/dbVibe/releases/latest/download/dbVibe-macos-universal.zip`.
+- Do not commit build artifacts. `build/portable/` and `build/bin/` are
+  gitignored; the release artifacts live on the GitHub Release.
