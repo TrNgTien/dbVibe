@@ -55,8 +55,22 @@ jobs:
         with:
           version: 11.1.1
 
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: choco install mingw -y --no-progress
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
+
+      - name: Add GOPATH bin to PATH
+        shell: bash
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build frontend
         run: |
