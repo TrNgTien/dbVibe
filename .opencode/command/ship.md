@@ -9,7 +9,9 @@ Requested version: $ARGUMENTS
 (If blank, compute the next patch version after the latest tag.)
 
 Do the following:
-1. Verify the tree builds: `go test ./...` then `pnpm -C frontend run build`.
+1. Run tests FIRST: `pnpm -C frontend install`, `pnpm -C frontend run build`,
+   then `go test ./...`. **If any test fails, STOP — cancel the ship**: report
+   the failure, do not tag, and do not push.
 2. Determine the target version — the requested one, or the next patch after
    `git describe --tags --abbrev=0`. The tag must start with `v`.
 3. Create and push the tag: `git tag <version>` and `git push origin <version>`.

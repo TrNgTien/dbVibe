@@ -86,10 +86,17 @@ Prefer to do it by hand instead of running a script?
 
 ## Releases
 
-Every version tag (`v*`) triggers a GitHub Actions workflow that builds
-`dbVibe` for macOS (universal), Windows (amd64), and Linux (amd64) and publishes
-the binaries as a GitHub Release with auto-generated notes. Prebuilt downloads
-are under the [Releases](https://github.com/TrNgTien/dbVibe/releases) page.
+Every version tag (`v*`) triggers the `Release` GitHub Actions workflow:
+
+1. **Run tests first** — the workflow builds the frontend, then runs
+   `go test ./...`. If any test fails, the job fails and the release is
+   cancelled; no artifacts are published.
+2. **Build the matrix** — macOS (universal), Windows (amd64), and Linux (amd64)
+   on native runners.
+3. **Publish** — packages the binaries and creates a GitHub Release with
+   auto-generated notes.
+
+Prebuilt downloads are under the [Releases](https://github.com/TrNgTien/dbVibe/releases) page.
 
 | Asset | Platform |
 |---|---|
@@ -97,12 +104,21 @@ are under the [Releases](https://github.com/TrNgTien/dbVibe/releases) page.
 | `dbVibe-windows-amd64.zip` | Windows x64 |
 | `dbVibe-linux-amd64.tar.gz` | Linux x64 |
 
-To cut a new release:
+### Cut a new release
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+1. Make sure the test suite passes locally:
+   ```bash
+   pnpm -C frontend install
+   pnpm -C frontend run build
+   go test ./...
+   ```
+2. Tag and push the version — this triggers the workflow:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+   Use a higher version than the latest tag. Track the run under the
+   [Actions](https://github.com/TrNgTien/dbVibe/actions) "Release" workflow.
 
 ## Platform support
 

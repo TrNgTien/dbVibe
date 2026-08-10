@@ -10,11 +10,18 @@ and pushing it; the `.github/workflows/release.yml` workflow does the rest.
 
 ## Steps
 
-1. **Verify the tree builds** before tagging:
+1. **Run tests FIRST — tests gate the release.** Build the frontend (the Go
+   binary embeds `frontend/dist`, so it must exist before `go test`), then run
+   the Go test suite:
    ```bash
-   go test ./...
+   pnpm -C frontend install
    pnpm -C frontend run build
+   go test ./...
    ```
+   **If any test fails, CANCEL the ship**: do not tag, do not push. Fix the
+   failing test, re-run `go test ./...` until green, and only then continue.
+   The CI workflow does the same — it runs the tests before building, and a
+   test failure fails the job, which cancels the release jobs.
 
 2. **Create and push the tag.** The tag name drives the release:
    ```bash
