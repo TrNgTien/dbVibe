@@ -1,6 +1,6 @@
 ---
 name: ship
-description: Ship a new dbVibe release — tag a version so the GitHub Actions release workflow builds the matrix (macOS universal, Windows amd64, Linux amd64) and publishes a GitHub Release with auto-generated notes. Use when the user wants to ship, release, or publish a new version.
+description: Ship a new dbVibe release — tag a version so the GitHub Actions release workflow builds the matrix (macOS universal, Windows amd64, Linux amd64) and publishes a GitHub Release with auto-generated notes. Use when the user wants to ship, release, publish, or cut a new version.
 ---
 
 # Ship dbVibe (GitHub Release)
