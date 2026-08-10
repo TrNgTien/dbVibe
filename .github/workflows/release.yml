@@ -19,7 +19,7 @@ jobs:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         include:
           - name: macos-universal
@@ -81,7 +81,7 @@ jobs:
         run: go test ./...
 
       - name: Build ${{ matrix.name }}
-        run: wails build -clean -platform ${{ matrix.platform }}
+        run: wails build -clean -platform ${{ matrix.platform }} -tags webkit2_41
         env:
           CGO_ENABLED: "1"
 
