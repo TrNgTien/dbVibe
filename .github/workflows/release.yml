@@ -58,13 +58,13 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.10.2
 
-      - name: Run Go tests
-        run: go test ./...
-
       - name: Build ${{ matrix.name }}
         run: wails build -clean -platform ${{ matrix.platform }}
         env:
           CGO_ENABLED: "1"
+
+      - name: Run Go tests
+        run: go test ./...
 
       - name: Prepare artifact dir
         shell: bash
