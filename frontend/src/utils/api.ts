@@ -201,6 +201,91 @@ export const api = {
   },
 };
 
+export const aiProviderDefaults = {
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", requiresKey: true },
+  anthropic: { baseUrl: "https://api.anthropic.com", model: "claude-sonnet-4-5", requiresKey: true },
+  gemini: { baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-2.0-flash", requiresKey: true },
+  deepseek: { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", requiresKey: true },
+  openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "deepseek/deepseek-chat", requiresKey: true },
+  groq: { baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile", requiresKey: true },
+  mistral: { baseUrl: "https://api.mistral.ai/v1", model: "mistral-large-latest", requiresKey: true },
+  xai: { baseUrl: "https://api.x.ai/v1", model: "grok-3-mini", requiresKey: true },
+  ollama: { baseUrl: "http://localhost:11434/v1", model: "llama3.2", requiresKey: false },
+  custom: { baseUrl: "http://localhost:8080/v1", model: "", requiresKey: false },
+};
+
+export function aiProviderLabel(provider) {
+  return {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    gemini: "Google Gemini",
+    deepseek: "DeepSeek",
+    openrouter: "OpenRouter",
+    groq: "Groq",
+    mistral: "Mistral",
+    xai: "xAI (Grok)",
+    ollama: "Ollama (local)",
+    custom: "Custom (OpenAI-compatible)",
+  }[provider] || provider;
+}
+
+export function aiProviderRequiresKey(provider) {
+  return !!aiProviderDefaults[provider]?.requiresKey;
+}
+
+/**
+ * Streams a chat completion. messages: [{role, content}].
+ * Callbacks: onChunk(delta), onDone(), onError(err), onStart().
+ */
+export async function streamChatAI(messages, { onChunk, onDone, onError, onStart } = {}) {
+  const app = (window as any)?.go?.main?.App;
+  const runtime = (window as any)?.runtime;
+  if (!app?.ChatAIStream) return streamDemoAI(messages, { onChunk, onDone });
+  onStart?.();
+
+  let finished = false;
+  const cleanup = () => {
+    runtime?.EventsOff?.("ai:chunk");
+    runtime?.EventsOff?.("ai:done");
+    runtime?.EventsOff?.("ai:error");
+  };
+  const finish = (error) => {
+    if (finished) return;
+    finished = true;
+    cleanup();
+    if (error) onError?.(error);
+    else onDone?.();
+  };
+
+  runtime?.EventsOn?.("ai:chunk", (chunk) => onChunk?.(String(chunk ?? "")));
+  runtime?.EventsOn?.("ai:done", () => finish(null));
+  runtime?.EventsOn?.("ai:error", (message) => finish(new Error(String(message))));
+  try {
+    await app.ChatAIStream(messages);
+    finish(null);
+  } catch (err) {
+    finish(err);
+  }
+}
+
+async function streamDemoAI(messages, { onChunk, onDone }) {
+  const question = messages[messages.length - 1]?.content || "";
+  const wantsSql =
+    /```sql|select\b|insert\b|update\b|delete\b|create\b|explain\b|optimize|index|slow/i.test(
+      question,
+    );
+  const answer = wantsSql
+    ? `Here is an optimized version of that query:\n\n\`\`\`sql\nselect u.id, u.email, count(o.id) as orders\nfrom users u\nleft join orders o on o.user_id = u.id\ngroup by u.id, u.email\norder by orders desc\nlimit 100;\n\`\`\`\n\nIt uses a **left join** so users without orders are still returned. Adding an index on \`orders(user_id)\` will speed up the join when the table grows.`
+    : `I'm your AI chat assistant. Select a query in the editor and press **Cmd+L** to ask me about it, or open the AI panel and type a question.`;
+  const words = answer.split(/(\s+)/);
+  for (let i = 0; i < words.length; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 12));
+    onChunk?.(words[i]);
+  }
+  onDone?.();
+}
+
+
 async function demoCall(name, ...args) {
   await new Promise((resolve) => setTimeout(resolve, 160));
   if (name === "ListConnections") return sampleConnections;
@@ -219,6 +304,12 @@ async function demoCall(name, ...args) {
   if (name === "ConfirmDeleteRedisKey") return true;
   if (name === "DeleteRedisKey") return null;
   if (name === "TestConnection") return null;
+  if (name === "LoadAISettings")
+    return { provider: "openai", baseUrl: "", apiKey: "", model: "gpt-4o-mini" };
+  if (name === "SaveAISettings") return args[0];
+  if (name === "TestAIModels")
+    return ["gpt-4o", "gpt-4o-mini", "deepseek-chat", "gemini-2.0-flash"];
+  if (name === "CancelAIStream") return null;
   if (name === "Connect" || name === "ConnectDatabase")
     return {
       driver: "postgres",

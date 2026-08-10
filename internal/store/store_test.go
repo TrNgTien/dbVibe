@@ -160,6 +160,55 @@ func TestSaveConnectionBinlogEndpoint(t *testing.T) {
 	}
 }
 
+func TestAISettingsRoundTrip(t *testing.T) {
+	s := newTestStore(t)
+
+	loaded, err := s.LoadAISettings()
+	if err != nil {
+		t.Fatalf("LoadAISettings() error = %v", err)
+	}
+	if loaded.Provider != "openai" {
+		t.Fatalf("default provider = %q, want openai", loaded.Provider)
+	}
+
+	settings := AISettings{
+		Provider: "ollama",
+		APIKey:   "  ",
+		BaseURL:  " http://localhost:11434/v1 ",
+		Model:    " llama3.2 ",
+	}
+	saved, err := s.SaveAISettings(settings)
+	if err != nil {
+		t.Fatalf("SaveAISettings() error = %v", err)
+	}
+	if saved.Provider != "ollama" || saved.BaseURL != "http://localhost:11434/v1" || saved.Model != "llama3.2" {
+		t.Fatalf("SaveAISettings() = %#v, want trimmed values", saved)
+	}
+
+	loaded, err = s.LoadAISettings()
+	if err != nil {
+		t.Fatalf("LoadAISettings() error = %v", err)
+	}
+	if loaded.Model != "llama3.2" {
+		t.Fatalf("LoadAISettings() model = %q, want llama3.2", loaded.Model)
+	}
+
+	query, err := s.SaveQuery(SavedQuery{ConnectionID: "connection-1", SQL: "select 1"})
+	if err != nil {
+		t.Fatalf("SaveQuery() error = %v", err)
+	}
+	if err := s.DeleteQuery(query.ID); err != nil {
+		t.Fatalf("DeleteQuery() error = %v", err)
+	}
+	loaded, err = s.LoadAISettings()
+	if err != nil {
+		t.Fatalf("LoadAISettings() error = %v", err)
+	}
+	if loaded.Model != "llama3.2" {
+		t.Fatalf("AI settings lost after query write, model = %q", loaded.Model)
+	}
+}
+
 func writeTestData(t *testing.T, s *Store, data dataFile) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {

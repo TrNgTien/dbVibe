@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"sql-gui/internal/ai"
 	"sql-gui/internal/database"
 	"sql-gui/internal/store"
 
@@ -25,6 +26,9 @@ type App struct {
 	store    *store.Store
 	sessions map[string]*connectionSession
 	mu       sync.Mutex
+	aiMu     sync.Mutex
+	aiBusy   bool
+	aiCancel context.CancelFunc
 }
 
 type connectionSession struct {
@@ -334,6 +338,88 @@ func (a *App) ConfirmDeleteRedisKey(key string, databaseName string) (bool, erro
 		return false, fmt.Errorf("confirm redis key deletion: %w", err)
 	}
 	return selection == "Delete", nil
+}
+
+func (a *App) LoadAISettings() (store.AISettings, error) {
+	return a.store.LoadAISettings()
+}
+
+func (a *App) SaveAISettings(settings store.AISettings) (store.AISettings, error) {
+	return a.store.SaveAISettings(settings)
+}
+
+func (a *App) TestAIModels(settings store.AISettings) ([]string, error) {
+	cfg := ai.Config{
+		Provider: settings.Provider,
+		APIKey:   settings.APIKey,
+		BaseURL:  settings.BaseURL,
+		Model:    settings.Model,
+	}.WithDefaults()
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Second)
+	defer cancel()
+	return ai.ListModels(ctx, cfg)
+}
+
+// ChatAIStream sends the conversation to the configured AI provider and emits
+// "ai:chunk" events with incremental text, then "ai:done" (or "ai:error").
+func (a *App) ChatAIStream(messages []ai.Message) error {
+	settings, err := a.store.LoadAISettings()
+	if err != nil {
+		return err
+	}
+	cfg := ai.Config{
+		Provider: settings.Provider,
+		APIKey:   settings.APIKey,
+		BaseURL:  settings.BaseURL,
+		Model:    settings.Model,
+	}.WithDefaults()
+	if err := cfg.Ready(); err != nil {
+		return err
+	}
+	if len(messages) == 0 {
+		return errors.New("no messages to send")
+	}
+
+	a.aiMu.Lock()
+	if a.aiBusy {
+		a.aiMu.Unlock()
+		return errors.New("another AI request is already running")
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.aiBusy = true
+	a.aiCancel = cancel
+	a.aiMu.Unlock()
+	defer func() {
+		a.aiMu.Lock()
+		a.aiCancel = nil
+		a.aiBusy = false
+		a.aiMu.Unlock()
+		cancel()
+	}()
+
+	err = ai.Chat(ctx, cfg, messages, func(delta string) {
+		runtime.EventsEmit(a.ctx, "ai:chunk", delta)
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			runtime.EventsEmit(a.ctx, "ai:done", "")
+			return nil
+		}
+		runtime.EventsEmit(a.ctx, "ai:error", err.Error())
+		return err
+	}
+	runtime.EventsEmit(a.ctx, "ai:done", "")
+	return nil
+}
+
+// CancelAIStream cancels the in-flight AI chat request, if any.
+func (a *App) CancelAIStream() {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+	if a.aiCancel != nil {
+		a.aiCancel()
+		a.aiCancel = nil
+	}
 }
 
 func (a *App) DeleteQuery(id string) error {

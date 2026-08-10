@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
+  Bot,
   ChevronsUp,
   ChevronsDown,
   Copy,
@@ -14,6 +15,7 @@ import {
   Save,
   Search,
   Settings,
+  Sparkles,
   Table2,
   Terminal,
   Trash2,
@@ -42,6 +44,7 @@ import { ConnectionForm } from "./components/ConnectionForm";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SidebarTree, ConnectionContextMenu } from "./components/SidebarTree";
 import { SavedQueries } from "./components/SavedQueries";
+import { AiChatPanel } from "./components/AiChatPanel";
 
 const defaultConnection = {
   id: "",
@@ -63,6 +66,7 @@ const defaultShortcuts = {
   explain: "Meta+Shift+Enter",
   saveQuery: "Meta+S",
   focusEditor: "Meta+K",
+  aiChat: "Meta+L",
 };
 
 function savedQueryField(query, camelName, goName) {
@@ -368,6 +372,7 @@ function App() {
     "tnt-sql-shortcuts",
     defaultShortcuts,
   );
+  const mergedShortcuts = { ...defaultShortcuts, ...shortcuts };
   const [generalSettings, setGeneralSettings] = useLocalStorage(
     "tnt-sql-general-settings",
     defaultGeneralSettings,
@@ -387,11 +392,15 @@ function App() {
   const [isResizing, setIsResizing] = useState(false);
   const [resultsHeight, setResultsHeight] = useState(0); // 0 = auto (flex)
   const [isResizingResults, setIsResizingResults] = useState(false);
+  const [aiPanelVisible, setAiPanelVisible] = useState(false);
+  const [aiPanelWidth, setAiPanelWidth] = useState(400);
+  const [isResizingAi, setIsResizingAi] = useState(false);
   const editorRef = useRef(null);
+  const aiChatRef = useRef(null);
 
   function openSettings() {
     setSettingsDraft({ ...generalSettings });
-    setShortcutsDraft({ ...shortcuts });
+    setShortcutsDraft({ ...mergedShortcuts });
     setSettingsOpen(true);
   }
 
@@ -440,6 +449,21 @@ function App() {
       window.removeEventListener("mouseup", onMouseUp);
     };
   }, [isResizingResults]);
+
+  useEffect(() => {
+    if (!isResizingAi) return;
+    const onMouseMove = (e) => {
+      const next = Math.max(280, Math.min(window.innerWidth - e.clientX, 700));
+      setAiPanelWidth(next);
+    };
+    const onMouseUp = () => setIsResizingAi(false);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [isResizingAi]);
 
   useEffect(() => {
     if (!showTableDetail) return;
@@ -539,21 +563,25 @@ function App() {
       }
 
       const combo = eventCombo(event);
-      if (combo === shortcuts.execute) {
+      if (combo === mergedShortcuts.execute) {
         event.preventDefault();
         execute();
       }
-      if (combo === shortcuts.explain) {
+      if (combo === mergedShortcuts.explain) {
         event.preventDefault();
         explainAnalyze();
       }
-      if (combo === shortcuts.saveQuery) {
+      if (combo === mergedShortcuts.saveQuery) {
         event.preventDefault();
         saveCurrentQuery();
       }
-      if (combo === shortcuts.focusEditor) {
+      if (combo === mergedShortcuts.focusEditor) {
         event.preventDefault();
         editorRef.current?.focus();
+      }
+      if (combo === mergedShortcuts.aiChat) {
+        event.preventDefault();
+        askSelection();
       }
     };
     window.addEventListener("keydown", handler);
@@ -999,6 +1027,20 @@ function App() {
     setResult(null);
   }
 
+  function askSelection() {
+    setAiPanelVisible(true);
+    const selection = editorRef.current?.getSelection?.();
+    const query = selection?.trim() || sqlText?.trim();
+    if (!query) {
+      aiChatRef.current?.ask("");
+      return;
+    }
+    const prompt = selection
+      ? `Please explain this SQL and suggest improvements:\n\`\`\`sql\n${selection}\n\`\`\``
+      : `Please explain what this query does and how it can be optimized:\n\`\`\`sql\n${query}\n\`\`\``;
+    aiChatRef.current?.ask(prompt);
+  }
+
   async function saveCurrentQuery() {
     if (!selected?.id || !sqlText.trim()) return;
     const name = sqlText.trim().split("\n")[0].slice(0, 64);
@@ -1290,11 +1332,17 @@ function App() {
     );
   }
 
+  const gridColumns = [
+    ...(sidebarVisible ? [`${sidebarWidth}px`] : []),
+    "minmax(0, 1fr)",
+    ...(aiPanelVisible ? [`${aiPanelWidth}px`] : []),
+  ].join(" ");
+
   return (
     <div
-      className={`app ${sidebarVisible ? "" : "sidebar-hidden"}`}
+      className={`app ${sidebarVisible ? "" : "sidebar-hidden"} ${aiPanelVisible ? "ai-panel-visible" : ""}`}
       style={{
-        gridTemplateColumns: sidebarVisible ? `${sidebarWidth}px 1fr` : "1fr",
+        gridTemplateColumns: gridColumns,
       }}
     >
       {sidebarVisible && (
@@ -1495,6 +1543,14 @@ function App() {
             <button title="Settings (Cmd+,)" onClick={openSettings}>
               <Settings size={16} />
             </button>
+            <button
+              className={`aiToggle ${aiPanelVisible ? "active" : ""}`}
+              title="AI Chat (Cmd+L)"
+              aria-label="Toggle AI chat panel"
+              onClick={() => setAiPanelVisible(!aiPanelVisible)}
+            >
+              <Bot />
+            </button>
           </div>
         </header>
 
@@ -1643,6 +1699,12 @@ function App() {
                     <button onClick={saveCurrentQuery}>
                       <Save size={15} /> Query
                     </button>
+                    <button
+                      onClick={askSelection}
+                      title="Ask AI about the selected text or current query (Cmd+L)"
+                    >
+                      <Sparkles size={15} /> Ask AI
+                    </button>
                     {(selected?.driver === "mysql" ||
                       selected?.driver === "postgres" ||
                       selected?.driver === "timescaledb") && (
@@ -1781,6 +1843,29 @@ function App() {
           />
         )}
       </main>
+
+      <AiChatPanel
+        ref={aiChatRef}
+        detail={detail}
+        connection={selected}
+        visible={aiPanelVisible}
+        onClose={() => setAiPanelVisible(false)}
+        onInsertQuery={(sql) => {
+          if (sql) setSqlText(sql);
+          setAiPanelVisible(true);
+        }}
+        onToast={showToast}
+      />
+      {aiPanelVisible && (
+        <div
+          className={`aiPanel-resizer ${isResizingAi ? "resizing" : ""}`}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsResizingAi(true);
+          }}
+          style={{ right: `${aiPanelWidth - 2}px` }}
+        />
+      )}
     </div>
   );
 }

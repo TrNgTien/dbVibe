@@ -38,9 +38,18 @@ type SavedQuery struct {
 	UpdatedAt    string `json:"updatedAt"`
 }
 
+// AISettings holds the AI chat provider configuration.
+type AISettings struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"apiKey"`
+	BaseURL  string `json:"baseUrl"`
+	Model    string `json:"model"`
+}
+
 type dataFile struct {
 	Connections []Connection `json:"connections"`
 	Queries     []SavedQuery `json:"queries"`
+	AISettings  AISettings   `json:"aiSettings"`
 }
 
 type Store struct {
@@ -287,6 +296,36 @@ func (s *Store) DeleteQuery(id string) error {
 		return errors.New("query not found")
 	}
 	return s.write(data)
+}
+
+func (s *Store) LoadAISettings() (AISettings, error) {
+	data, err := s.read()
+	if err != nil {
+		return AISettings{}, err
+	}
+	if data.AISettings.Provider == "" {
+		data.AISettings.Provider = "openai"
+	}
+	return data.AISettings, nil
+}
+
+func (s *Store) SaveAISettings(settings AISettings) (AISettings, error) {
+	settings.Provider = strings.TrimSpace(settings.Provider)
+	settings.BaseURL = strings.TrimSpace(settings.BaseURL)
+	settings.APIKey = strings.TrimSpace(settings.APIKey)
+	settings.Model = strings.TrimSpace(settings.Model)
+	if settings.Provider == "" {
+		settings.Provider = "openai"
+	}
+	data, err := s.read()
+	if err != nil {
+		return AISettings{}, err
+	}
+	data.AISettings = settings
+	if err := s.write(data); err != nil {
+		return AISettings{}, err
+	}
+	return settings, nil
 }
 
 func (s *Store) AutoDeleteQueries(days int) error {
