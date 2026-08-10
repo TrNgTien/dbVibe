@@ -106,19 +106,28 @@ Prebuilt downloads are under the [Releases](https://github.com/TrNgTien/dbVibe/r
 
 ### Cut a new release
 
-1. Make sure the test suite passes locally:
-   ```bash
-   pnpm -C frontend install
-   pnpm -C frontend run build
-   go test ./...
-   ```
-2. Tag and push the version — this triggers the workflow:
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-   Use a higher version than the latest tag. Track the run under the
-   [Actions](https://github.com/TrNgTien/dbVibe/actions) "Release" workflow.
+The full flow — tests gate, tag, push, and wait for the GitHub Release page —
+is one command:
+
+```bash
+./scripts/release.sh v1.0.0        # or: make release VERSION=v1.0.0
+```
+
+The script verifies a clean tree, runs the frontend build + `go test ./...`
+(aborting if any test fails), creates and pushes the tag (triggering the
+`Release` workflow), then waits for the release page to appear and prints its
+URL. Manual equivalent:
+
+```bash
+pnpm -C frontend install
+pnpm -C frontend run build
+go test ./...
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Use a higher version than the latest tag. Track the run under the
+[Actions](https://github.com/TrNgTien/dbVibe/actions) "Release" workflow.
 
 ## Platform support
 

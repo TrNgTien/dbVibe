@@ -9,16 +9,13 @@ Requested version: $ARGUMENTS
 (If blank, compute the next patch version after the latest tag.)
 
 Do the following:
-1. Run tests FIRST: `pnpm -C frontend install`, `pnpm -C frontend run build`,
-   then `go test ./...`. **If any test fails, STOP — cancel the ship**: report
-   the failure, do not tag, and do not push.
-2. Determine the target version — the requested one, or the next patch after
-   `git describe --tags --abbrev=0`. The tag must start with `v`.
-3. Create and push the tag: `git tag <version>` and `git push origin <version>`.
-4. Report back the release page URL
-   (https://github.com/TrNgTien/dbVibe/releases) and note that the "Release"
-   GitHub Actions workflow builds macOS/Windows/Linux artifacts in a few
-   minutes.
-
-Do not commit anything else and do not create the GitHub Release manually —
-the workflow does that.
+1. Determine the target version — the requested one, or the next patch after
+   `git describe --tags --abbrev=0`. It must be `vX.Y.Z`.
+2. Run the full release flow with the ship script:
+   `./scripts/release.sh <version>` (equiv. `make release VERSION=<version>`).
+   This verifies a clean tree, runs tests first (frontend build + `go test
+   ./...`), creates and pushes the tag, and waits for the GitHub Release page.
+   **If the tests fail, the script aborts — do not tag or push.**
+3. Report back the release page URL
+   (https://github.com/TrNgTien/dbVibe/releases) and confirm the Release
+   workflow is building macOS/Windows/Linux artifacts.

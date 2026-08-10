@@ -10,25 +10,40 @@ and pushing it; the `.github/workflows/release.yml` workflow does the rest.
 
 ## Steps
 
-1. **Run tests FIRST — tests gate the release.** Build the frontend (the Go
-   binary embeds `frontend/dist`, so it must exist before `go test`), then run
-   the Go test suite:
+The full flow is one command — `scripts/release.sh` (or `make release
+VERSION=v1.0.1`). It:
+
+1. requires a clean working tree
+2. runs the tests first (frontend build + `go test ./...`) — **aborts on
+   failure; no tag, no push**
+3. creates the version tag
+4. pushes the tag, triggering the `Release` GitHub Actions workflow
+5. waits for the GitHub Release page to appear and prints its URL
+
+Run it:
+
+```bash
+./scripts/release.sh v1.0.1
+```
+
+The script also mirrors the CI gating: the workflow runs tests before building,
+and a test failure fails the build job, which cancels the release jobs.
+
+If the script is unavailable, do it manually:
+1. **Run tests FIRST**:
    ```bash
    pnpm -C frontend install
    pnpm -C frontend run build
    go test ./...
    ```
-   **If any test fails, CANCEL the ship**: do not tag, do not push. Fix the
-   failing test, re-run `go test ./...` until green, and only then continue.
-   The CI workflow does the same — it runs the tests before building, and a
-   test failure fails the job, which cancels the release jobs.
-
-2. **Create and push the tag.** The tag name drives the release:
+   **If any test fails, CANCEL the ship** — fix, re-run until green, then
+   continue.
+2. **Create and push the tag** (use a higher version than the latest tag,
+   `git tag` / `git describe --tags`):
    ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
+   git tag v1.0.1
+   git push origin v1.0.1
    ```
-   Use a higher version than the latest tag (`git tag` / `git describe --tags`).
 
 3. **Confirm the release** at
    https://github.com/TrNgTien/dbVibe/releases — the workflow builds

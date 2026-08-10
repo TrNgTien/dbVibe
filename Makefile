@@ -1,4 +1,4 @@
-.PHONY: help all start dev run build build-portable frontend frontend-build deps install-wails doctor
+.PHONY: help all start dev run build build-portable frontend frontend-build deps install-wails doctor release
 
 WAILS_VERSION ?= v2.10.2
 WAILS ?= go run github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
@@ -19,6 +19,7 @@ help:
 	@echo "  make deps           Install/download Go and frontend dependencies"
 	@echo "  make install-wails  Install the Wails CLI on PATH"
 	@echo "  make doctor         Show tool versions"
+	@echo "  make release VERSION=v1.0.0  Full release flow (tests, tag, push, GitHub Release page)"
 
 all: build
 
@@ -59,3 +60,6 @@ doctor:
 	node --version
 	pnpm --version
 	env -u GOROOT $(WAILS) version
+
+release:
+	./scripts/release.sh $(VERSION)
