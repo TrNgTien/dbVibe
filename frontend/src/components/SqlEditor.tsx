@@ -8,7 +8,13 @@ import {
 } from "@codemirror/commands";
 import { MySQL, PostgreSQL, sql } from "@codemirror/lang-sql";
 import { json } from "@codemirror/lang-json";
-import { indentUnit, StreamLanguage } from "@codemirror/language";
+import {
+  HighlightStyle,
+  indentUnit,
+  StreamLanguage,
+  syntaxHighlighting,
+} from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import {
   SearchQuery,
   closeSearchPanel,
@@ -36,6 +42,7 @@ import { createBackendCompletionSource, createSqlCompletionSource } from "../uti
 const redisMode = {
   token(stream) {
     if (stream.eatSpace()) return null;
+    if (stream.match(/^#.*/)) return "comment";
     if (stream.match(/^".*?"|^'.*?'/)) return "string";
     if (stream.match(/^-?\d+(?:\.\d+)?/)) return "number";
     const word = stream.match(/^[\w:-]+/);
@@ -45,6 +52,7 @@ const redisMode = {
       }
       return "variableName";
     }
+    if (stream.match(/^[()[\],]/)) return "punctuation";
     stream.next();
     return null;
   }
@@ -76,6 +84,34 @@ const elasticsearchMode = {
 
 const redisLanguage = StreamLanguage.define(redisMode);
 const elasticsearchLanguage = StreamLanguage.define(elasticsearchMode);
+
+// VS Code Dark+ inspired palette, tuned for the #101318 editor background.
+const editorHighlightStyle = HighlightStyle.define([
+  { tag: t.keyword, color: "#7fb0ff" },
+  { tag: [t.string, t.special(t.string)], color: "#ce9178" },
+  { tag: [t.number, t.bool, t.null], color: "#b5cea8" },
+  {
+    tag: [t.comment, t.lineComment, t.blockComment],
+    color: "#6a9955",
+    fontStyle: "italic",
+  },
+  {
+    tag: [t.variableName, t.propertyName, t.definition(t.variableName)],
+    color: "#9cdcfe",
+  },
+  {
+    tag: [t.function(t.variableName), t.function(t.propertyName)],
+    color: "#dcdcaa",
+  },
+  { tag: [t.typeName, t.className, t.namespace], color: "#4ec9b0" },
+  {
+    tag: [t.atom, t.constant(t.variableName), t.constant(t.propertyName)],
+    color: "#569cd6",
+  },
+  { tag: [t.operator, t.punctuation, t.bracket, t.separator], color: "#d4d4d4" },
+  { tag: [t.labelName, t.attributeName], color: "#9cdcfe" },
+  { tag: t.meta, color: "#808890" },
+]);
 
 function createSearchButton(label, title, onClick, className = "") {
   const button = document.createElement("button");
@@ -280,6 +316,7 @@ export function SqlEditor({
           EditorState.tabSize.of(tabWidth),
           indentUnit.of(" ".repeat(tabWidth)),
           languageExtension,
+          syntaxHighlighting(editorHighlightStyle),
           search({ top: true, createPanel: createSearchPanel }),
           autocompletion({
             activateOnTyping: true,

@@ -954,6 +954,7 @@ function App() {
       ),
     );
     setResult(next);
+    setExplain(null);
     if (selected.driver === "redis") {
       setLastRedisCommand(queryToRun);
     }
@@ -995,6 +996,7 @@ function App() {
       ),
     );
     setExplain(next);
+    setResult(null);
   }
 
   async function saveCurrentQuery() {

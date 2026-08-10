@@ -2,6 +2,8 @@
 
 Minimal macOS database client built with Wails, Go, and React. It focuses on fast database debugging without Electron.
 
+![dbVibe overview](docs/assets/app-overview.png)
+
 ## Features
 
 - Stored connection dashboard
@@ -40,6 +42,18 @@ The Query Optimizer Lab walks a real `EXPLAIN ANALYZE` through parse, rewrite, c
 
 ## Install (macOS)
 
+### One-line install
+
+No repo checkout, no instructions — paste this into Terminal and hit Enter:
+
+```bash
+curl -fsSL https://github.com/TrNgTien/dbVibe/raw/main/build/portable/dbVibe-macos.zip -o /tmp/dbVibe-macos.zip && curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh -o /tmp/dbVibe-install.sh && bash /tmp/dbVibe-install.sh /tmp/dbVibe-macos.zip
+```
+
+This downloads the latest portable build plus the installer, installs `dbVibe.app` to `/Applications` (clearing the Gatekeeper quarantine flag), and launches it. Re-run it any time to update.
+
+### From a checkout
+
 Clone or download this repo, then run:
 
 ```bash
@@ -67,6 +81,22 @@ Prefer to do it by hand instead of running a script?
    ```bash
    xattr -dr com.apple.quarantine /Applications/dbVibe.app
    ```
+
+## Platform support
+
+dbVibe is a Wails v2 app and runs natively on macOS, Windows, and Linux. The
+portable zip above is the macOS build; Windows and Linux users build from
+source:
+
+| Platform | Install | Notes |
+|---|---|---|
+| macOS | `./install.sh` | Prebuilt portable zip, one-line install |
+| Windows | `wails build -platform windows/amd64` | Produces `dbVibe.exe` |
+| Linux | `wails build -platform linux/amd64` | Produces `dbVibe` binary |
+
+Openers, file reveal, and path handling already branch per-OS in
+`app.go`; the only macOS-only feature is "Open in Terminal", which requires
+`osascript` and is unavailable on Windows/Linux.
 
 ## Develop
 

@@ -215,14 +215,22 @@ func (s *Store) SaveQuery(query SavedQuery) (SavedQuery, error) {
 	if query.Name == "" {
 		query.Name = firstLine(query.SQL)
 	}
-	if query.ID == "" {
-		query.ID = randomID()
-	}
-	query.UpdatedAt = time.Now().Format(time.RFC3339)
 	data, err := s.read()
 	if err != nil {
 		return SavedQuery{}, err
 	}
+	if query.ID == "" {
+		existing, err := s.findQueryByName(data, query.ConnectionID, query.Name)
+		if err != nil {
+			return SavedQuery{}, err
+		}
+		if existing != nil {
+			query.ID = existing.ID
+		} else {
+			query.ID = randomID()
+		}
+	}
+	query.UpdatedAt = time.Now().Format(time.RFC3339)
 	data.Queries = slices.DeleteFunc(data.Queries, func(existing SavedQuery) bool {
 		return existing.ID == query.ID
 	})
@@ -230,6 +238,24 @@ func (s *Store) SaveQuery(query SavedQuery) (SavedQuery, error) {
 		return SavedQuery{}, err
 	}
 	return query, s.write(data)
+}
+
+func (s *Store) findQueryByName(data dataFile, connectionID, name string) (*SavedQuery, error) {
+	for i := range data.Queries {
+		if data.Queries[i].ConnectionID == connectionID && data.Queries[i].Name == name {
+			return &data.Queries[i], nil
+		}
+	}
+	fileQueries, err := s.readQueryFiles()
+	if err != nil {
+		return nil, err
+	}
+	for i := range fileQueries {
+		if fileQueries[i].ConnectionID == connectionID && fileQueries[i].Name == name {
+			return &fileQueries[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func randomID() string {

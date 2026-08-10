@@ -248,7 +248,14 @@ async function demoCall(name, ...args) {
   if (name === "SaveQuery") {
     const saved = {
       ...args[0],
-      id: args[0].id || `q-${Date.now()}`,
+      id:
+        args[0].id ||
+        demoSavedQueries.find(
+          (query) =>
+            query.connectionId === args[0].connectionId &&
+            query.name === args[0].name,
+        )?.id ||
+        `q-${Date.now()}`,
       updatedAt: new Date().toISOString(),
     };
     demoSavedQueries = [

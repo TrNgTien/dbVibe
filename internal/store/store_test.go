@@ -52,6 +52,41 @@ func TestSaveAndDeleteQueryFile(t *testing.T) {
 	}
 }
 
+func TestSaveQueryUpsertsByName(t *testing.T) {
+	s := newTestStore(t)
+	first, err := s.SaveQuery(SavedQuery{
+		ConnectionID: "connection-1",
+		Name:         "Users",
+		SQL:          "select 1",
+	})
+	if err != nil {
+		t.Fatalf("SaveQuery() error = %v", err)
+	}
+
+	second, err := s.SaveQuery(SavedQuery{
+		ConnectionID: "connection-1",
+		Name:         "Users",
+		SQL:          "select 2",
+	})
+	if err != nil {
+		t.Fatalf("SaveQuery() error = %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("upsert ID = %q, want %q", second.ID, first.ID)
+	}
+
+	queries, err := s.ListQueries("connection-1")
+	if err != nil {
+		t.Fatalf("ListQueries() error = %v", err)
+	}
+	if len(queries) != 1 {
+		t.Fatalf("ListQueries() = %d queries, want 1", len(queries))
+	}
+	if queries[0].SQL != "select 2" {
+		t.Fatalf("ListQueries() SQL = %q, want %q", queries[0].SQL, "select 2")
+	}
+}
+
 func TestSaveQueryMigratesLegacyStoreEntry(t *testing.T) {
 	s := newTestStore(t)
 	legacy := SavedQuery{
