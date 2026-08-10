@@ -1,24 +1,32 @@
 #!/usr/bin/env bash
-# Install dbVibe.app to /Applications from the portable zip.
+# Install dbVibe.app to /Applications.
 #
 # Usage:
-#   ./install.sh              # uses build/portable/dbVibe-macos.zip next to this script
-#   ./install.sh path/to/dbVibe-macos.zip
+#   ./install.sh                        # downloads the latest macOS release from GitHub Releases
+#   ./install.sh path/to/dbVibe-macos-universal.zip
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ZIP_PATH="${1:-$SCRIPT_DIR/build/portable/dbVibe-macos.zip}"
 APP_NAME="dbVibe.app"
 DEST="/Applications/$APP_NAME"
+RELEASE_URL="https://github.com/TrNgTien/dbVibe/releases/latest/download/dbVibe-macos-universal.zip"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "error: dbVibe is a macOS app; this installer only runs on macOS." >&2
   exit 1
 fi
 
+ZIP_PATH="${1:-}"
+
+if [[ -z "$ZIP_PATH" ]]; then
+  echo "Downloading latest dbVibe release..."
+  ZIP_PATH="$(mktemp -t dbvibe-XXXXXX).zip"
+  curl -fL --retry 3 "$RELEASE_URL" -o "$ZIP_PATH"
+fi
+
 if [[ ! -f "$ZIP_PATH" ]]; then
   echo "error: zip not found at $ZIP_PATH" >&2
-  echo "Pass the path explicitly: ./install.sh /path/to/dbVibe-macos.zip" >&2
+  echo "Pass the path explicitly: ./install.sh /path/to/dbVibe-macos-universal.zip" >&2
   exit 1
 fi
 

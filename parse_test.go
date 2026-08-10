@@ -1,8 +1,9 @@
 package main
 
 import (
-	"fmt"
+	"reflect"
 	"strings"
+	"testing"
 	"unicode"
 )
 
@@ -46,7 +47,20 @@ func parseRedisCommand(cmd string) []string {
 	return args
 }
 
-func main() {
-	fmt.Printf("%q\n", parseRedisCommand(`SET mykey "Hello World"`))
-	fmt.Printf("%q\n", parseRedisCommand(`HSET user:1 name 'John Doe' age 30`))
+func TestParseRedisCommand(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{`SET mykey "Hello World"`, []string{"SET", "mykey", "Hello World"}},
+		{`HSET user:1 name 'John Doe' age 30`, []string{"HSET", "user:1", "name", "John Doe", "age", "30"}},
+		{`SET k "escaped ""quote"""`, []string{"SET", "k", `escaped "quote"`}},
+		{`GET    spaced    args`, []string{"GET", "spaced", "args"}},
+		{``, nil},
+	}
+	for _, c := range cases {
+		if got := parseRedisCommand(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("parseRedisCommand(%q) = %#v, want %#v", c.in, got, c.want)
+		}
+	}
 }

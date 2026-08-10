@@ -2,6 +2,8 @@
 
 Minimal macOS database client built with Wails, Go, and React. It focuses on fast database debugging without Electron.
 
+![Release](https://img.shields.io/github/v/release/TrNgTien/dbVibe)
+
 ![dbVibe overview](docs/assets/app-overview.png)
 
 ## Features
@@ -47,10 +49,10 @@ The Query Optimizer Lab walks a real `EXPLAIN ANALYZE` through parse, rewrite, c
 No repo checkout, no instructions — paste this into Terminal and hit Enter:
 
 ```bash
-curl -fsSL https://github.com/TrNgTien/dbVibe/raw/main/build/portable/dbVibe-macos.zip -o /tmp/dbVibe-macos.zip && curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh -o /tmp/dbVibe-install.sh && bash /tmp/dbVibe-install.sh /tmp/dbVibe-macos.zip
+curl -fsSL https://github.com/TrNgTien/dbVibe/releases/latest/download/dbVibe-macos-universal.zip -o /tmp/dbVibe-macos.zip && curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh -o /tmp/dbVibe-install.sh && bash /tmp/dbVibe-install.sh /tmp/dbVibe-macos.zip
 ```
 
-This downloads the latest portable build plus the installer, installs `dbVibe.app` to `/Applications` (clearing the Gatekeeper quarantine flag), and launches it. Re-run it any time to update.
+This downloads the latest release build plus the installer, installs `dbVibe.app` to `/Applications` (clearing the Gatekeeper quarantine flag), and launches it. Re-run it any time to update.
 
 ### From a checkout
 
@@ -60,21 +62,21 @@ Clone or download this repo, then run:
 ./install.sh
 ```
 
-This unzips `build/portable/dbVibe-macos.zip`, clears the Gatekeeper quarantine
+This downloads the latest macOS release, clears the Gatekeeper quarantine
 flag (the build is unsigned), installs `dbVibe.app` to `/Applications`, and
 launches it. Re-running it updates an existing install.
 
-If you only have the zip (no repo checkout), pass its path:
+If you already have the zip, pass its path:
 
 ```bash
-./install.sh /path/to/dbVibe-macos.zip
+./install.sh /path/to/dbVibe-macos-universal.zip
 ```
 
 ### Manual install
 
 Prefer to do it by hand instead of running a script?
 
-1. Download `build/portable/dbVibe-macos.zip`.
+1. Download `dbVibe-macos-universal.zip` from the latest release.
 2. Unzip it.
 3. Drag `dbVibe.app` to `/Applications`.
 4. If macOS blocks the app on first launch, clear quarantine:
@@ -82,17 +84,36 @@ Prefer to do it by hand instead of running a script?
    xattr -dr com.apple.quarantine /Applications/dbVibe.app
    ```
 
+## Releases
+
+Every version tag (`v*`) triggers a GitHub Actions workflow that builds
+`dbVibe` for macOS (universal), Windows (amd64), and Linux (amd64) and publishes
+the binaries as a GitHub Release with auto-generated notes. Prebuilt downloads
+are under the [Releases](https://github.com/TrNgTien/dbVibe/releases) page.
+
+| Asset | Platform |
+|---|---|
+| `dbVibe-macos-universal.zip` | macOS (Apple Silicon + Intel) |
+| `dbVibe-windows-amd64.zip` | Windows x64 |
+| `dbVibe-linux-amd64.tar.gz` | Linux x64 |
+
+To cut a new release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Platform support
 
-dbVibe is a Wails v2 app and runs natively on macOS, Windows, and Linux. The
-portable zip above is the macOS build; Windows and Linux users build from
-source:
+dbVibe is a Wails v2 app and runs natively on macOS, Windows, and Linux.
+Prebuilt binaries for all three platforms are published on every release:
 
 | Platform | Install | Notes |
 |---|---|---|
-| macOS | `./install.sh` | Prebuilt portable zip, one-line install |
-| Windows | `wails build -platform windows/amd64` | Produces `dbVibe.exe` |
-| Linux | `wails build -platform linux/amd64` | Produces `dbVibe` binary |
+| macOS | `./install.sh` | Prebuilt universal zip, one-line install |
+| Windows | Download `dbVibe-windows-amd64.zip` | Unzip and run `dbVibe.exe` |
+| Linux | Download `dbVibe-linux-amd64.tar.gz` | Extract and run `./dbVibe` |
 
 Openers, file reveal, and path handling already branch per-OS in
 `app.go`; the only macOS-only feature is "Open in Terminal", which requires
@@ -127,7 +148,7 @@ cd sql-gui
 make build-portable
 ```
 
-The zip is created at `build/portable/dbVibe-macos.zip`. Recipients can unzip and run `dbVibe.app`.
+The zip is created at `build/portable/dbVibe-macos-universal.zip`. Recipients can unzip and run `dbVibe.app`.
 
 If your shell has GVM variables loaded, `env -u GOROOT` avoids mixing Homebrew Go 1.25 with a Go 1.24 GVM root.
 
