@@ -226,15 +226,18 @@ func Execute(ctx context.Context, db *sql.DB, driver, sqlText string, limit int)
 		limit = 300
 	}
 	start := time.Now()
-	rows, err := db.QueryContext(ctx, sqlText)
-	if err == nil {
-		defer rows.Close()
-		result, scanErr := scanRows(rows, limit)
-		result.DurationMS = float64(time.Since(start).Microseconds()) / 1000.0
-		return result, scanErr
+	if isQueryStatement(sqlText) {
+		rows, err := db.QueryContext(ctx, sqlText)
+		if err == nil {
+			defer rows.Close()
+			result, scanErr := scanRows(rows, limit)
+			result.DurationMS = float64(time.Since(start).Microseconds()) / 1000.0
+			return result, scanErr
+		}
+		return QueryResult{}, err
 	}
-	result, execErr := db.ExecContext(ctx, sqlText)
-	if execErr != nil {
+	result, err := db.ExecContext(ctx, sqlText)
+	if err != nil {
 		return QueryResult{}, err
 	}
 	affected, _ := result.RowsAffected()
@@ -243,6 +246,30 @@ func Execute(ctx context.Context, db *sql.DB, driver, sqlText string, limit int)
 		DurationMS:   float64(time.Since(start).Microseconds()) / 1000.0,
 		Message:      fmt.Sprintf("%d rows affected", affected),
 	}, nil
+}
+
+// isQueryStatement reports whether sqlText returns a result set. DML (UPDATE,
+// INSERT, DELETE, ...) must go through ExecContext: drivers return a silent
+// empty result (no error, no columns) for them via Query, so RowsAffected
+// would be lost.
+func isQueryStatement(sqlText string) bool {
+	s := strings.TrimSpace(sqlText)
+	for strings.HasPrefix(s, "(") {
+		s = strings.TrimSpace(s[1:])
+	}
+	for strings.HasPrefix(s, "/*") {
+		if end := strings.Index(s, "*/"); end >= 0 {
+			s = strings.TrimSpace(s[end+2:])
+		}
+	}
+	if i := strings.IndexAny(s, " \t\r\n"); i >= 0 {
+		s = s[:i]
+	}
+	switch strings.ToUpper(s) {
+	case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH", "VALUES", "PRAGMA", "TABLE":
+		return true
+	}
+	return false
 }
 
 func ExplainAnalyze(ctx context.Context, db *sql.DB, driver, sqlText string) (QueryResult, error) {
