@@ -12,7 +12,7 @@ func postgresTables(ctx context.Context, db *sql.DB) ([]TableInfo, error) {
 		select schemaname, relname, case when schemaname = 'pg_catalog' then 'system' else 'table' end, n_live_tup
 		from pg_stat_user_tables
 		union all
-		select table_schema, table_name, table_type, 0
+		select table_schema, table_name, 'view', 0
 		from information_schema.views
 		where table_schema not in ('pg_catalog', 'information_schema')
 		order by 1, 2`)
