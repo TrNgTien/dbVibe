@@ -27,9 +27,24 @@ brew install mysql-client
 
 ## Install
 
-### Quick install (macOS)
+### From a checkout (works today)
 
-Paste this into Terminal and hit Enter — no checkout, no downloading a zip by hand:
+The one-liner below only works once a [release](https://github.com/TrNgTien/dbVibe/releases) is published (none yet). Until then, build the portable zip from the repo and install it:
+
+```bash
+make build-portable
+./install.sh build/portable/dbVibe-macos-universal.zip
+```
+
+Or point the installer at any `dbVibe-macos-universal.zip` you already have:
+
+```bash
+./install.sh /path/to/dbVibe-macos-universal.zip
+```
+
+### Quick install (once a release exists)
+
+Paste this into Terminal and hit Enter — no checkout, no building:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh | bash
@@ -40,25 +55,11 @@ build is unsigned, so macOS marks it "damaged" or blocks it otherwise), installs
 `dbVibe.app` to `/Applications`, and opens it. Re-run the same command any time
 to update.
 
-### From a checkout
-
-Already have the repo cloned?
-
-```bash
-./install.sh
-```
-
-Or point it at a zip you already downloaded:
-
-```bash
-./install.sh /path/to/dbVibe-macos-universal.zip
-```
-
 ### Manual install (macOS)
 
 Prefer doing it by hand?
 
-1. Download `dbVibe-macos-universal.zip` from the [latest release](https://github.com/TrNgTien/dbVibe/releases/latest) and unzip it.
+1. Get a zip: `make build-portable` (creates `build/portable/dbVibe-macos-universal.zip`), or download it from the [latest release](https://github.com/TrNgTien/dbVibe/releases/latest) once one is published, then unzip it.
 2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
    ```bash
    xattr -cr dbVibe.app

@@ -63,6 +63,9 @@ echo "Installing to $DEST..."
 cp -R "$WORK_DIR/$APP_NAME" "$DEST"
 
 echo "Launching dbVibe..."
-open "$DEST"
+for _ in 1 2 3; do
+  if open "$DEST" 2>/dev/null; then break; fi
+  sleep 1
+done
 
 echo "Done. dbVibe is installed at $DEST"
