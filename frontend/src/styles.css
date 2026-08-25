@@ -2267,6 +2267,25 @@ td {
   margin: 0;
 }
 
+.jsonFieldLine {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.jsonFieldLine .jsonLineCopy {
+  opacity: 0;
+  transition: opacity 0.2s;
+  padding: 2px;
+  color: #6f7a86;
+  flex: 0 0 auto;
+}
+
+.jsonFieldLine:hover .jsonLineCopy {
+  opacity: 1;
+}
+
 .error,
 .loading,
 .toast {

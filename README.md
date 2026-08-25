@@ -44,29 +44,28 @@ The Query Optimizer Lab walks a real `EXPLAIN ANALYZE` through parse, rewrite, c
 
 ## Install (macOS)
 
-### One-line install
+### Quick install
 
-No repo checkout, no instructions — paste this into Terminal and hit Enter:
+Paste this into Terminal and hit Enter — no checkout, no downloading a zip by hand:
 
 ```bash
-curl -fsSL https://github.com/TrNgTien/dbVibe/releases/latest/download/dbVibe-macos-universal.zip -o /tmp/dbVibe-macos.zip && curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh -o /tmp/dbVibe-install.sh && bash /tmp/dbVibe-install.sh /tmp/dbVibe-macos.zip
+curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh | bash
 ```
 
-This downloads the latest release build plus the installer, installs `dbVibe.app` to `/Applications` (clearing the Gatekeeper quarantine flag), and launches it. Re-run it any time to update.
+It downloads the latest release, clears the Gatekeeper quarantine flag (the
+build is unsigned, so macOS marks it "damaged" or blocks it otherwise), installs
+`dbVibe.app` to `/Applications`, and opens it. Re-run the same command any time
+to update.
 
 ### From a checkout
 
-Clone or download this repo, then run:
+Already have the repo cloned?
 
 ```bash
 ./install.sh
 ```
 
-This downloads the latest macOS release, clears the Gatekeeper quarantine
-flag (the build is unsigned), installs `dbVibe.app` to `/Applications`, and
-launches it. Re-running it updates an existing install.
-
-If you already have the zip, pass its path:
+Or point it at a zip you already downloaded:
 
 ```bash
 ./install.sh /path/to/dbVibe-macos-universal.zip
@@ -74,15 +73,14 @@ If you already have the zip, pass its path:
 
 ### Manual install
 
-Prefer to do it by hand instead of running a script?
+Prefer doing it by hand?
 
-1. Download `dbVibe-macos-universal.zip` from the latest release.
-2. Unzip it.
-3. Drag `dbVibe.app` to `/Applications`.
-4. If macOS blocks the app on first launch, clear quarantine:
+1. Download `dbVibe-macos-universal.zip` from the [latest release](https://github.com/TrNgTien/dbVibe/releases/latest) and unzip it.
+2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
    ```bash
-   xattr -dr com.apple.quarantine /Applications/dbVibe.app
+   xattr -cr dbVibe.app
    ```
+3. Drag `dbVibe.app` to `/Applications`.
 
 ## Releases
 

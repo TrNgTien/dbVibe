@@ -6,7 +6,6 @@
 #   ./install.sh path/to/dbVibe-macos-universal.zip
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="dbVibe.app"
 DEST="/Applications/$APP_NAME"
 RELEASE_URL="https://github.com/TrNgTien/dbVibe/releases/latest/download/dbVibe-macos-universal.zip"
@@ -16,7 +15,15 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+# Resolve a relative zip arg against the caller's cwd before we cd away.
 ZIP_PATH="${1:-}"
+if [[ -n "$ZIP_PATH" ]]; then
+  ZIP_PATH="$(cd "$(dirname "$ZIP_PATH")" && pwd)/$(basename "$ZIP_PATH")"
+fi
+
+# Run from $HOME from here on so behavior never depends on the caller's cwd
+# (matters when this script is piped straight into bash).
+cd "$HOME"
 
 if [[ -z "$ZIP_PATH" ]]; then
   echo "Downloading latest dbVibe release..."

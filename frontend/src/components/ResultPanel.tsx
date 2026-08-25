@@ -326,25 +326,28 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
     return String(val);
   };
 
+  const toJsonValue = (v) => {
+    if (typeof v === "string" && isJson(v)) {
+      try {
+        return JSON.parse(v);
+      } catch {
+        return v;
+      }
+    }
+    // Convert numeric strings back to numbers for prettier JSON if they strictly match
+    if (typeof v === "string" && !isNaN(Number(v)) && v.trim() !== "") {
+      return Number(v);
+    }
+    if (v === "true" || v === "false") {
+      return v === "true";
+    }
+    return v;
+  };
+
   const getJsonRow = () => {
     const jsonRow = {};
     for (const [k, v] of filteredEntries) {
-      if (typeof v === "string" && isJson(v)) {
-        try {
-          jsonRow[k] = JSON.parse(v);
-        } catch {
-          jsonRow[k] = v;
-        }
-      } else {
-        // Convert numeric strings back to numbers for prettier JSON if they strictly match
-        if (typeof v === "string" && !isNaN(Number(v)) && v.trim() !== "") {
-          jsonRow[k] = Number(v);
-        } else if (v === "true" || v === "false") {
-          jsonRow[k] = v === "true";
-        } else {
-          jsonRow[k] = v;
-        }
-      }
+      jsonRow[k] = toJsonValue(v);
     }
     return JSON.stringify(jsonRow, null, 2);
   };
@@ -403,8 +406,38 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
               >
                 <Copy size={14} />
               </button>
-              <pre className="jsonValue" style={{ margin: 0 }}>
-                {getJsonRow()}
+              <pre className="jsonValue jsonValueLines" style={{ margin: 0 }}>
+                <div>{"{"}</div>
+                {filteredEntries.map(([key, value], idx) => {
+                  const formatted = JSON.stringify(
+                    toJsonValue(value),
+                    null,
+                    2,
+                  );
+                  const indented = formatted.split("\n").join("\n  ");
+                  const comma = idx < filteredEntries.length - 1 ? "," : "";
+                  return (
+                    <div key={key} className="jsonFieldLine">
+                      <span>
+                        {"  "}
+                        {JSON.stringify(key)}: {indented}
+                        {comma}
+                      </span>
+                      <button
+                        className="iconButton small jsonLineCopy"
+                        title="Copy key/value"
+                        onClick={() =>
+                          navigator.clipboard.writeText(
+                            `${JSON.stringify(key)}: ${formatted}`,
+                          )
+                        }
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <div>{"}"}</div>
               </pre>
             </div>
           ) : (
