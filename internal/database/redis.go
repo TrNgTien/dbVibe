@@ -135,7 +135,7 @@ func InspectRedis(ctx context.Context, conn store.Connection) (ConnectionDetail,
 	if err != nil {
 		databases = redisFallbackDatabases(redisDatabase(conn.Database))
 	}
-	keys, err := redisKeys(ctx, client, redisDatabase(conn.Database), 200)
+	keys, err := redisKeys(ctx, client, redisDatabase(conn.Database))
 	if err != nil {
 		keys = nil
 	}
@@ -219,11 +219,11 @@ func redisDatabaseInfos(ctx context.Context, client *redis.Client, selected stri
 	return items, nil
 }
 
-func redisKeys(ctx context.Context, client *redis.Client, database string, limit int) ([]TableInfo, error) {
-	keys := make([]string, 0, limit)
+func redisKeys(ctx context.Context, client *redis.Client, database string) ([]TableInfo, error) {
+	keys := make([]string, 0)
 	var cursor uint64
-	for len(keys) < limit {
-		batch, next, err := client.Scan(ctx, cursor, "*", int64(limit-len(keys))).Result()
+	for {
+		batch, next, err := client.Scan(ctx, cursor, "*", 1000).Result()
 		if err != nil {
 			return nil, fmt.Errorf("scan redis keys: %w", err)
 		}
@@ -235,16 +235,23 @@ func redisKeys(ctx context.Context, client *redis.Client, database string, limit
 	}
 	slices.Sort(keys)
 
+	// Batch the per-key TYPE lookups into one round trip so large key counts
+	// don't time out (a round-trip per key blew the 10s connect deadline at ~3k keys).
+	pipe := client.Pipeline()
+	typeCmds := make([]*redis.StatusCmd, len(keys))
+	for i, key := range keys {
+		typeCmds[i] = pipe.Type(ctx, key)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, fmt.Errorf("read redis key types: %w", err)
+	}
+
 	items := make([]TableInfo, 0, len(keys))
-	for _, key := range keys {
-		keyType, err := client.Type(ctx, key).Result()
-		if err != nil {
-			return nil, fmt.Errorf("read redis key type: %w", err)
-		}
+	for i, key := range keys {
 		items = append(items, TableInfo{
 			Schema: database,
 			Name:   key,
-			Type:   keyType,
+			Type:   typeCmds[i].Val(),
 		})
 	}
 	return items, nil

@@ -10,6 +10,34 @@ export function defaultPort(driver) {
   return 3306;
 }
 
+export function connectionString(conn) {
+  const auth = (u, p) =>
+    u ? `${encodeURIComponent(u)}:${encodeURIComponent(p || "")}@` : "";
+  switch (conn.driver) {
+    case "postgres":
+    case "timescaledb": {
+      const q = conn.sslMode && conn.sslMode !== "disable"
+        ? `?sslmode=${conn.sslMode}`
+        : "";
+      return `postgresql://${auth(conn.user, conn.password)}${conn.host}:${conn.port}/${conn.database}${q}`;
+    }
+    case "mysql":
+      return `mysql://${auth(conn.user, conn.password)}${conn.host}:${conn.port}/${conn.database}`;
+    case "redis":
+      return `redis://${auth("", conn.password)}${conn.host}:${conn.port}/${conn.database || "0"}`;
+    case "elasticsearch": {
+      const scheme = conn.useTLS ? "https" : "http";
+      return `${scheme}://${auth(conn.user, conn.password)}${conn.host}:${conn.port}`;
+    }
+    case "mongodb": {
+      const q = conn.useTLS ? "?tls=true" : "";
+      return `mongodb://${auth(conn.user, conn.password)}${conn.host}:${conn.port}/${conn.database}${q}`;
+    }
+    default:
+      return `${conn.host}:${conn.port}`;
+  }
+}
+
 export function driverLabel(driver) {
   if (driver === "postgres") return "PostgreSQL";
   if (driver === "timescaledb") return "TimescaleDB";
@@ -144,6 +172,16 @@ const sampleConnections = [
     database: "app",
     user: "root",
     useTLS: false,
+  },
+  {
+    id: "demo-redis",
+    name: "Local Redis",
+    driver: "redis",
+    host: "localhost",
+    port: 6379,
+    database: "0",
+    user: "",
+    password: "",
   },
 ];
 
@@ -292,15 +330,24 @@ async function demoCall(name, ...args) {
   if (name === "SaveConnection")
     return { ...args[0], id: args[0].id || `demo-${Date.now()}` };
   if (name === "DeleteConnection") return null;
+  if (name === "DeleteWorkspace") return null;
+  if (name === "ListWorkspaces") return [];
+  if (name === "SaveWorkspace") {
+    const w = { ...args[0], id: args[0].id || `demo-ws-${Date.now()}` };
+    return w;
+  }
+  if (name === "ExportWorkspace") return `/tmp/${Date.now()}.dbvibe.json`;
+  if (name === "ImportWorkspace")
+    return { id: `demo-ws-${Date.now()}`, name: "Imported workspace" };
   if (name === "AutoDeleteQueries") return null;
   if (name === "ConfirmDeleteQuery") return true;
+  if (name === "ConfirmDeleteConnection") return true;
   if (name === "DeleteQuery") {
     demoSavedQueries = demoSavedQueries.filter((query) => query.id !== args[0]);
     return null;
   }
   if (name === "ExportQueryResult") return `/tmp/${args[1] || "export.csv"}`;
   if (name === "OpenExportedFile" || name === "RevealExportedFile") return null;
-  if (name === "OpenConnectionTerminal") return null;
   if (name === "ConfirmDeleteRedisKey") return true;
   if (name === "DeleteRedisKey") return null;
   if (name === "TestConnection") return null;
@@ -311,23 +358,56 @@ async function demoCall(name, ...args) {
     return ["gpt-4o", "gpt-4o-mini", "deepseek-chat", "gemini-2.0-flash"];
   if (name === "CancelAIStream") return null;
   if (name === "Connect" || name === "ConnectDatabase")
-    return {
-      driver: "postgres",
-      database: args[1] || "app",
-      databases: [
-        { name: "app", size: 3_560_000_000 },
-        { name: "analytics", size: 1_170_000 },
-        { name: "mysql", size: 0 },
-      ],
-      tables: demoTables,
-      routines: [
-        {
-          schema: "public",
-          name: "refresh_billing_sessions",
-          type: "function",
-        },
-      ],
-    };
+    return args[0] === "demo-redis"
+      ? {
+          driver: "redis",
+          database: args[1] || "0",
+          databases: [
+            { name: "0", size: 5 },
+            { name: "1", size: 2 },
+            { name: "2", size: 0 },
+          ],
+          tables: [
+            { schema: "0", name: "users:1", type: "hash", rows: 3 },
+            { schema: "0", name: "users:active", type: "set", rows: 8 },
+            { schema: "0", name: "session:abc123", type: "string", rows: 0 },
+            { schema: "0", name: "queue:jobs", type: "list", rows: 42 },
+            {
+              schema: "0",
+              name: "queue:failed:2024",
+              type: "zset",
+              rows: 5,
+            },
+            { schema: "0", name: "scores:board", type: "zset", rows: 10 },
+            { schema: "0", name: "tags:online", type: "set", rows: 8 },
+            { schema: "1", name: "cache:recent", type: "string", rows: 0 },
+            { schema: "1", name: "counter:visits", type: "string", rows: 0 },
+            {
+              schema: "1",
+              name: "order:2024:summary",
+              type: "hash",
+              rows: 2,
+            },
+          ],
+          routines: [],
+        }
+      : {
+          driver: "postgres",
+          database: args[1] || "app",
+          databases: [
+            { name: "app", size: 3_560_000_000 },
+            { name: "analytics", size: 1_170_000 },
+            { name: "mysql", size: 0 },
+          ],
+          tables: demoTables,
+          routines: [
+            {
+              schema: "public",
+              name: "refresh_billing_sessions",
+              type: "function",
+            },
+          ],
+        };
   if (name === "GetCompletions") {
     return [
       { label: "SET", detail: "command", type: "keyword", apply: "SET " },

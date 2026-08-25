@@ -60,6 +60,67 @@ func (a *App) DeleteConnection(id string) error {
 	return a.store.DeleteConnection(id)
 }
 
+func (a *App) ListWorkspaces() ([]store.Workspace, error) {
+	return a.store.ListWorkspaces()
+}
+
+func (a *App) SaveWorkspace(w store.Workspace) (store.Workspace, error) {
+	return a.store.SaveWorkspace(w)
+}
+
+func (a *App) DeleteWorkspace(id string) error {
+	return a.store.DeleteWorkspace(id)
+}
+
+func (a *App) ExportWorkspace(workspaceID string) (string, error) {
+	if a.ctx == nil {
+		return "", errors.New("app context is nil")
+	}
+	data, err := a.store.ExportWorkspace(workspaceID)
+	if err != nil {
+		return "", err
+	}
+	options := runtime.SaveDialogOptions{
+		DefaultFilename: "workspace.dbvibe.json",
+		Filters: []runtime.FileFilter{
+			{DisplayName: "dbVibe Workspace", Pattern: "*.json"},
+		},
+	}
+	filepath, err := runtime.SaveFileDialog(a.ctx, options)
+	if err != nil {
+		return "", err
+	}
+	if filepath == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(filepath, data, 0o644); err != nil {
+		return "", fmt.Errorf("failed to save workspace file: %w", err)
+	}
+	return filepath, nil
+}
+
+func (a *App) ImportWorkspace() (store.Workspace, error) {
+	if a.ctx == nil {
+		return store.Workspace{}, errors.New("app context is nil")
+	}
+	filepath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Filters: []runtime.FileFilter{
+			{DisplayName: "dbVibe Workspace", Pattern: "*.json"},
+		},
+	})
+	if err != nil {
+		return store.Workspace{}, err
+	}
+	if filepath == "" {
+		return store.Workspace{}, nil
+	}
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return store.Workspace{}, fmt.Errorf("failed to read workspace file: %w", err)
+	}
+	return a.store.ImportWorkspace(data)
+}
+
 func (a *App) TestConnection(conn store.Connection) error {
 	ctx, cancel := context.WithTimeout(a.ctx, 6*time.Second)
 	defer cancel()
@@ -322,6 +383,28 @@ func (a *App) ConfirmDeleteQuery(name string) (bool, error) {
 	return selection == "Delete", nil
 }
 
+func (a *App) ConfirmDeleteConnection(name string) (bool, error) {
+	if a.ctx == nil {
+		return false, errors.New("app context is nil")
+	}
+	message := "Delete this connection?"
+	if name = strings.TrimSpace(name); name != "" {
+		message = fmt.Sprintf("Delete connection %q?", name)
+	}
+	selection, err := runtime.MessageDialog(a.ctx, runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         "Delete Connection",
+		Message:       message,
+		Buttons:       []string{"Delete", "Cancel"},
+		DefaultButton: "Cancel",
+		CancelButton:  "Cancel",
+	})
+	if err != nil {
+		return false, fmt.Errorf("confirm connection deletion: %w", err)
+	}
+	return selection == "Delete", nil
+}
+
 func (a *App) ConfirmDeleteRedisKey(key string, databaseName string) (bool, error) {
 	if a.ctx == nil {
 		return false, errors.New("app context is nil")
@@ -491,90 +574,6 @@ func openPath(filePath string) error {
 	default:
 		return exec.Command("xdg-open", filePath).Start()
 	}
-}
-
-func (a *App) OpenConnectionTerminal(connectionID, databaseName string) error {
-	conn, err := a.store.GetConnection(connectionID)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(databaseName) != "" {
-		conn.Database = strings.TrimSpace(databaseName)
-	}
-	command, err := connectionTerminalCommand(conn)
-	if err != nil {
-		return err
-	}
-	if goruntime.GOOS != "darwin" {
-		return errors.New("opening a connection terminal is only supported on macOS")
-	}
-	script := fmt.Sprintf(
-		`tell application "Terminal" to do script %q`,
-		command,
-	)
-	if err := exec.Command("osascript", "-e", script).Start(); err != nil {
-		return fmt.Errorf("open connection terminal: %w", err)
-	}
-	return nil
-}
-
-func connectionTerminalCommand(conn store.Connection) (string, error) {
-	host := shellQuote(conn.Host)
-	port := strconv.Itoa(conn.Port)
-	user := shellQuote(conn.User)
-	databaseName := shellQuote(conn.Database)
-
-	switch conn.Driver {
-	case "mysql":
-		command := fmt.Sprintf("mysql --host=%s --port=%s --user=%s --password", host, port, user)
-		if conn.Database != "" {
-			command += " " + databaseName
-		}
-		return command, nil
-	case "postgres":
-		command := fmt.Sprintf("psql --host=%s --port=%s --username=%s --password", host, port, user)
-		if conn.Database != "" {
-			command += " --dbname=" + databaseName
-		}
-		return command, nil
-	case "redis":
-		command := fmt.Sprintf("redis-cli --host %s --port %s", host, port)
-		if conn.Database != "" {
-			command += " -n " + databaseName
-		}
-		if conn.Password != "" {
-			command += " --askpass"
-		}
-		return command, nil
-	case "elasticsearch":
-		scheme := "http"
-		if conn.UseTLS {
-			scheme = "https"
-		}
-		command := fmt.Sprintf("curl --include %s://%s:%s/", scheme, host, port)
-		if conn.User != "" {
-			command = fmt.Sprintf("curl --include --user %s %s://%s:%s/", user, scheme, host, port)
-		}
-		return command, nil
-	case "mongodb":
-		command := fmt.Sprintf("mongosh --host %s --port %s", host, port)
-		if conn.User != "" {
-			command += " --username " + user + " --password"
-		}
-		if conn.UseTLS {
-			command += " --tls"
-		}
-		if conn.Database != "" {
-			command += " " + databaseName
-		}
-		return command, nil
-	default:
-		return "", fmt.Errorf("unsupported connection driver %q", conn.Driver)
-	}
-}
-
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func (a *App) AutoDeleteQueries(days int) error {

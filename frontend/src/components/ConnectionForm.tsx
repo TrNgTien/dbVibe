@@ -3,7 +3,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { DriverLogo } from "./common";
 import { defaultPort } from "../utils/api";
 
-export function ConnectionForm({ draft, setDraft }) {
+export function ConnectionForm({ draft, setDraft, workspaces }) {
   const [showPassword, setShowPassword] = useState(false);
   const connectionInputProps = {
     autoCapitalize: "none",
@@ -25,6 +25,20 @@ export function ConnectionForm({ draft, setDraft }) {
           value={draft.name}
           onChange={(e) => patch({ name: e.target.value })}
         />
+      </label>
+      <label style={{ gridColumn: "span 2" }}>
+        Workspace
+        <select
+          value={draft.workspaceId || ""}
+          onChange={(e) => patch({ workspaceId: e.target.value })}
+        >
+          <option value="">Ungrouped</option>
+          {(workspaces || []).map((ws) => (
+            <option key={ws.id} value={ws.id}>
+              {ws.name}
+            </option>
+          ))}
+        </select>
       </label>
       <label style={{ gridColumn: "span 2" }}>
         Driver

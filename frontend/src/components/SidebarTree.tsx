@@ -12,19 +12,24 @@ import {
   PinOff,
   Pencil,
   PowerOff,
-  Terminal,
+  Copy,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { DriverLogo, StatusDot } from "./common";
 import { driverLabel, normalizeObjectType } from "../utils/api";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 export function ConnectionContextMenu({
   menu,
   connected,
+  workspaces,
   onCloseConnection,
   onEditConnection,
-  onOpenTerminal,
   onTogglePin,
+  onMoveToWorkspace,
+  onCopyConnectionString,
+  onDeleteConnection,
 }) {
   return (
     <div
@@ -32,6 +37,9 @@ export function ConnectionContextMenu({
       style={{ left: menu.x, top: menu.y }}
       onClick={(event) => event.stopPropagation()}
     >
+      <button onClick={onCopyConnectionString}>
+        <Copy size={15} /> Copy connection string
+      </button>
       <button onClick={onTogglePin}>
         {menu.conn.isPinned ? <PinOff size={15} /> : <Pin size={15} />}
         {menu.conn.isPinned ? "Unpin" : "Pin"}
@@ -39,18 +47,43 @@ export function ConnectionContextMenu({
       <button onClick={onEditConnection}>
         <Pencil size={15} /> Edit connection
       </button>
-      <button onClick={onOpenTerminal}>
-        <Terminal size={15} /> Open terminal
-      </button>
       <button onClick={onCloseConnection} disabled={!connected}>
         <PowerOff size={15} /> Close connection
       </button>
+      <button onClick={onDeleteConnection}>
+        <Trash2 size={15} /> Delete connection
+      </button>
+      <div className="contextMenuDivider" />
+      <div className="contextMenuLabel">Move to workspace</div>
+      <button
+        onClick={() => onMoveToWorkspace(menu.conn, "")}
+        disabled={!menu.conn.workspaceId}
+      >
+        {menu.conn.workspaceId ? "" : <span className="moveCheck">✓</span>}
+        Ungrouped
+      </button>
+      {(workspaces || []).map((ws) => (
+        <button
+          key={ws.id}
+          onClick={() => onMoveToWorkspace(menu.conn, ws.id)}
+          disabled={menu.conn.workspaceId === ws.id}
+        >
+          {menu.conn.workspaceId === ws.id ? (
+            <span className="moveCheck">✓</span>
+          ) : null}
+          {ws.name}
+        </button>
+      ))}
     </div>
   );
 }
 
 export function SidebarTree({
-  connections,
+  groups,
+  expandedWorkspaces,
+  onToggleWorkspace,
+  onExportWorkspace,
+  onDeleteWorkspace,
   details,
   expandedConnections,
   expandedObjects,
@@ -70,125 +103,201 @@ export function SidebarTree({
   const matchesFilter = (item) =>
     !filterTerm || String(item?.name || "").toLowerCase().includes(filterTerm);
 
+  const renderConnection = (conn) => {
+    const isExpanded =
+      expandedConnections[conn.id] ||
+      (!!filterTerm && selected?.id === conn.id);
+    const detail = details[conn.id];
+    const isConnected = connectedConnections[conn.id];
+
+    const rawDatabases = detail?.databases?.length
+      ? detail.databases
+      : detail?.database
+        ? [{ name: detail.database, size: 0 }]
+        : [];
+    const allObjects = (detail?.tables || []).map((table) => ({
+      ...table,
+      objectType: normalizeObjectType(table.type),
+    }));
+    const connIndexes = (detail?.indexes || []).filter(
+      (index) =>
+        !filterTerm ||
+        String(index.name || "").toLowerCase().includes(filterTerm) ||
+        String(index.table || "").toLowerCase().includes(filterTerm),
+    );
+    const tables = allObjects.filter(
+      (table) =>
+        table.objectType === "table" &&
+        (matchesFilter(table) ||
+          (!!filterTerm &&
+            connIndexes.some(
+              (index) =>
+                String(index.table).toLowerCase() ===
+                String(table.name).toLowerCase(),
+            ))),
+    );
+    const views = (
+      detail?.views ||
+      allObjects.filter((table) => table.objectType === "view")
+    ).filter(matchesFilter);
+    const routines = detail?.routines || [];
+    const functions = (
+      detail?.functions ||
+      routines.filter((routine) => routine.type === "function")
+    ).filter(matchesFilter);
+    const procedures = routines.filter(
+      (routine) => routine.type === "procedure" && matchesFilter(routine),
+    );
+
+    return (
+      <div key={conn.id} className="treeBranch">
+        <div
+          className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
+          onContextMenu={(event) => onContextMenu(event, conn)}
+        >
+          <span
+            className="treeChevron connectionChevron"
+            role="button"
+            tabIndex={0}
+            aria-expanded={isExpanded}
+            onClick={(e) => onToggleConnection(conn, e)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggleConnection(conn, e);
+              }
+            }}
+          >
+            {isExpanded ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </span>
+          <button
+            type="button"
+            className="connectionSelect"
+            onClick={() => onSelectConnection(conn)}
+          >
+            <span className="connectionName">
+              <StatusDot
+                status={isConnected ? "connected" : "disconnected"}
+              />
+              <DriverLogo driver={conn.driver} />
+              {conn.name}
+              {conn.isPinned && (
+                <Pin size={12} fill="currentColor" className="pinIcon" />
+              )}
+            </span>
+            <small>{driverLabel(conn.driver)}</small>
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div className="treeChildren connectionChildren">
+            {(!detail || !isConnected) && (
+              <div className="treeEmpty">Loading...</div>
+            )}
+            {detail && isConnected && (
+              <ConnectionTreeInner
+                connId={conn.id}
+                driver={conn.driver}
+                forceExpand={!!filterTerm && selected?.id === conn.id}
+                activeDatabase={detail.database}
+                databases={rawDatabases}
+                tables={tables}
+                views={views}
+                functions={functions}
+                procedures={procedures}
+                indexes={connIndexes}
+                expanded={expandedObjects}
+                onToggle={(key) => onToggleObject(conn.id, key)}
+                onOpenDatabase={(db) => onOpenDatabase(db, conn.id)}
+                onOpenTable={(table) => onOpenTable(table, conn.id)}
+                onDeleteRedisKey={(key) => onDeleteRedisKey?.(key, conn.id)}
+                onNewQuery={onNewQuery}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="objectTree sidebarTree">
-      {connections.map((conn) => {
-        const isExpanded =
-          expandedConnections[conn.id] ||
-          (!!filterTerm && selected?.id === conn.id);
-        const detail = details[conn.id];
-        const isConnected = connectedConnections[conn.id];
-
-        const rawDatabases = detail?.databases?.length
-          ? detail.databases
-          : detail?.database
-            ? [{ name: detail.database, size: 0 }]
-            : [];
-        const allObjects = (detail?.tables || []).map((table) => ({
-          ...table,
-          objectType: normalizeObjectType(table.type),
-        }));
-        const connIndexes = (detail?.indexes || []).filter(
-          (index) =>
-            !filterTerm ||
-            String(index.name || "").toLowerCase().includes(filterTerm) ||
-            String(index.table || "").toLowerCase().includes(filterTerm),
-        );
-        const tables = allObjects.filter(
-          (table) =>
-            table.objectType === "table" &&
-            (matchesFilter(table) ||
-              (!!filterTerm &&
-                connIndexes.some(
-                  (index) =>
-                    String(index.table).toLowerCase() ===
-                    String(table.name).toLowerCase(),
-                ))),
-        );
-        const views = (
-          detail?.views ||
-          allObjects.filter((table) => table.objectType === "view")
-        ).filter(matchesFilter);
-        const routines = detail?.routines || [];
-        const functions = (
-          detail?.functions ||
-          routines.filter((routine) => routine.type === "function")
-        ).filter(matchesFilter);
-        const procedures = routines.filter(
-          (routine) => routine.type === "procedure" && matchesFilter(routine),
-        );
-
+      {groups.map((group) => {
+        const expanded = group.isUngrouped
+          ? true
+          : !!expandedWorkspaces[group.id];
         return (
-          <div key={conn.id} className="treeBranch">
+          <div
+            key={group.id || "ungrouped"}
+            className="treeBranch workspaceGroup"
+          >
             <div
-              className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
-              onContextMenu={(event) => onContextMenu(event, conn)}
+              className="workspaceHeader"
+              role={group.isUngrouped ? undefined : "button"}
+              tabIndex={group.isUngrouped ? undefined : 0}
+              aria-expanded={group.isUngrouped ? undefined : expanded}
+              onClick={
+                group.isUngrouped
+                  ? undefined
+                  : () => onToggleWorkspace(group.id)
+              }
+              onKeyDown={
+                group.isUngrouped
+                  ? undefined
+                  : (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onToggleWorkspace(group.id);
+                      }
+                    }
+              }
             >
-              <span
-                className="treeChevron connectionChevron"
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
-                onClick={(e) => onToggleConnection(conn, e)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onToggleConnection(conn, e);
-                  }
-                }}
-              >
-                {isExpanded ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </span>
-              <button
-                type="button"
-                className="connectionSelect"
-                onClick={() => onSelectConnection(conn)}
-              >
-                <span className="connectionName">
-                  <StatusDot
-                    status={isConnected ? "connected" : "disconnected"}
-                  />
-                  <DriverLogo driver={conn.driver} />
-                  {conn.name}
-                  {conn.isPinned && (
-                    <Pin size={12} fill="currentColor" className="pinIcon" />
+              {group.isUngrouped ? (
+                <span className="treeChevron" />
+              ) : (
+                <span className="treeChevron">
+                  {expanded ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
                   )}
                 </span>
-                <small>{driverLabel(conn.driver)}</small>
-              </button>
+              )}
+              <span className="workspaceName">{group.name}</span>
+              <small>{group.connections.length}</small>
+              {!group.isUngrouped && (
+                <span className="workspaceActions">
+                  {group.connections.length > 0 && (
+                    <button
+                      className="iconButton"
+                      title="Export workspace"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExportWorkspace(group.id);
+                      }}
+                    >
+                      <Upload size={13} />
+                    </button>
+                  )}
+                  <button
+                    className="iconButton"
+                    title="Delete workspace"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteWorkspace(group.id);
+                    }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </span>
+              )}
             </div>
-
-            {isExpanded && (
-              <div className="treeChildren connectionChildren">
-                {(!detail || !isConnected) && (
-                  <div className="treeEmpty">Loading...</div>
-                )}
-                {detail && isConnected && (
-                  <ConnectionTreeInner
-                    connId={conn.id}
-                    driver={conn.driver}
-                    forceExpand={!!filterTerm && selected?.id === conn.id}
-                    activeDatabase={detail.database}
-                    databases={rawDatabases}
-                    tables={tables}
-                    views={views}
-                    functions={functions}
-                    procedures={procedures}
-                    indexes={connIndexes}
-                    expanded={expandedObjects}
-                    onToggle={(key) => onToggleObject(conn.id, key)}
-                    onOpenDatabase={(db) => onOpenDatabase(db, conn.id)}
-                    onOpenTable={(table) => onOpenTable(table, conn.id)}
-                    onDeleteRedisKey={(key) => onDeleteRedisKey?.(key, conn.id)}
-                    onNewQuery={onNewQuery}
-                  />
-                )}
-              </div>
-            )}
+            {expanded &&
+              group.connections.map((conn) => renderConnection(conn))}
           </div>
         );
       })}
@@ -221,6 +330,71 @@ function IndexRow({ index, deep }) {
       {columnCount > 1 && (
         <span className="indexBadge cols">{columnCount} cols</span>
       )}
+    </div>
+  );
+}
+
+function RedisKeyVirtualList({ keys, onOpenTable, onDeleteRedisKey }) {
+  const parentRef = React.useRef(null);
+  const rowVirtualizer = useVirtualizer({
+    count: keys.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 31,
+    overscan: 12,
+  });
+  return (
+    <div ref={parentRef} className="redisVirtualList">
+      <div
+        className="redisVirtualListInner"
+        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+      >
+        {rowVirtualizer.getVirtualItems().map((vi) => {
+          const key = keys[vi.index];
+          return (
+            <div
+              key={key.name}
+              className="treeItem redisKeyItem"
+              role="button"
+              tabIndex={0}
+              onClick={() => onOpenTable(key)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onOpenTable(key);
+                }
+              }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: `${vi.size}px`,
+                transform: `translateY(${vi.start}px)`,
+              }}
+            >
+              <div className="treeIndent" />
+              <Table2 size={14} />
+              <span className="treeKeyLabel" title={key.name}>
+                {key.name}
+              </span>
+              <small>{key.type}</small>
+              <button
+                type="button"
+                className="iconButton treeRowAction"
+                title={`Delete ${key.name}`}
+                aria-label={`Delete ${key.name}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onDeleteRedisKey?.(key);
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -307,41 +481,13 @@ function ConnectionTreeInner({
               {tables.length === 0 && (
                 <div className="treeEmpty">No keys found</div>
               )}
-              {tables.map((key) => (
-                <div
-                  key={key.name}
-                  className="treeItem redisKeyItem"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onOpenTable(key)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onOpenTable(key);
-                    }
-                  }}
-                >
-                  <div className="treeIndent" />
-                  <Table2 size={14} />
-                  <span className="treeKeyLabel" title={key.name}>
-                    {key.name}
-                  </span>
-                  <small>{key.type}</small>
-                  <button
-                    type="button"
-                    className="iconButton treeRowAction"
-                    title={`Delete ${key.name}`}
-                    aria-label={`Delete ${key.name}`}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onDeleteRedisKey?.(key);
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
+              {tables.length > 0 && (
+                <RedisKeyVirtualList
+                  keys={tables}
+                  onOpenTable={onOpenTable}
+                  onDeleteRedisKey={onDeleteRedisKey}
+                />
+              )}
             </div>
           )}
         </div>

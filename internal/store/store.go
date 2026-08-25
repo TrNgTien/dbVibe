@@ -15,19 +15,31 @@ import (
 )
 
 type Connection struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Driver     string `json:"driver"`
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	BinlogHost string `json:"binlogHost,omitempty"`
-	BinlogPort int    `json:"binlogPort,omitempty"`
-	Database   string `json:"database"`
-	User       string `json:"user"`
-	Password   string `json:"password"`
-	SSLMode    string `json:"sslMode"`
-	UseTLS     bool   `json:"useTLS"`
-	IsPinned   bool   `json:"isPinned"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Driver      string `json:"driver"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	BinlogHost  string `json:"binlogHost,omitempty"`
+	BinlogPort  int    `json:"binlogPort,omitempty"`
+	Database    string `json:"database"`
+	User        string `json:"user"`
+	Password    string `json:"password"`
+	SSLMode     string `json:"sslMode"`
+	UseTLS      bool   `json:"useTLS"`
+	IsPinned    bool   `json:"isPinned"`
+	WorkspaceID string `json:"workspaceId,omitempty"`
+}
+
+type Workspace struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type WorkspaceExport struct {
+	Version     int          `json:"version"`
+	Workspace   Workspace    `json:"workspace"`
+	Connections []Connection `json:"connections"`
 }
 
 type SavedQuery struct {
@@ -50,6 +62,7 @@ type dataFile struct {
 	Connections []Connection `json:"connections"`
 	Queries     []SavedQuery `json:"queries"`
 	AISettings  AISettings   `json:"aiSettings"`
+	Workspaces  []Workspace  `json:"workspaces"`
 }
 
 type Store struct {
@@ -185,6 +198,180 @@ func (s *Store) DeleteConnection(id string) error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) ListWorkspaces() ([]Workspace, error) {
+	data, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	workspaces := make([]Workspace, len(data.Workspaces))
+	copy(workspaces, data.Workspaces)
+	slices.SortFunc(workspaces, func(a, b Workspace) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+	return workspaces, nil
+}
+
+func (s *Store) SaveWorkspace(w Workspace) (Workspace, error) {
+	w.Name = strings.TrimSpace(w.Name)
+	if w.Name == "" {
+		return Workspace{}, errors.New("workspace name is required")
+	}
+	data, err := s.read()
+	if err != nil {
+		return Workspace{}, err
+	}
+	if w.ID == "" {
+		w.ID = randomID()
+	}
+	replaced := false
+	for i := range data.Workspaces {
+		if data.Workspaces[i].ID == w.ID {
+			data.Workspaces[i] = w
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		data.Workspaces = append(data.Workspaces, w)
+	}
+	return w, s.write(data)
+}
+
+func (s *Store) DeleteWorkspace(id string) error {
+	data, err := s.read()
+	if err != nil {
+		return err
+	}
+	data.Workspaces = slices.DeleteFunc(data.Workspaces, func(w Workspace) bool {
+		return w.ID == id
+	})
+	data.Connections = slices.DeleteFunc(data.Connections, func(c Connection) bool {
+		return c.WorkspaceID == id
+	})
+	return s.write(data)
+}
+
+func (s *Store) ExportWorkspace(id string) ([]byte, error) {
+	data, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	var workspace Workspace
+	for _, w := range data.Workspaces {
+		if w.ID == id {
+			workspace = w
+			break
+		}
+	}
+	if workspace.ID == "" {
+		return nil, errors.New("workspace not found")
+	}
+	connections := make([]Connection, 0)
+	for _, conn := range data.Connections {
+		if conn.WorkspaceID == id {
+			connections = append(connections, conn)
+		}
+	}
+	return json.MarshalIndent(WorkspaceExport{
+		Version:     1,
+		Workspace:   workspace,
+		Connections: connections,
+	}, "", "  ")
+}
+
+func (s *Store) ImportWorkspace(data []byte) (Workspace, error) {
+	var export WorkspaceExport
+	if err := json.Unmarshal(data, &export); err != nil {
+		return Workspace{}, fmt.Errorf("invalid workspace file: %w", err)
+	}
+	if export.Version != 1 {
+		return Workspace{}, errors.New("unsupported workspace file version")
+	}
+	export.Workspace.Name = strings.TrimSpace(export.Workspace.Name)
+	if export.Workspace.Name == "" {
+		return Workspace{}, errors.New("workspace name is required")
+	}
+	existing, err := s.ListWorkspaces()
+	if err != nil {
+		return Workspace{}, err
+	}
+	names := make(map[string]bool, len(existing))
+	for _, w := range existing {
+		names[strings.ToLower(w.Name)] = true
+	}
+	name := export.Workspace.Name
+	for i := 1; names[strings.ToLower(name)]; i++ {
+		if i == 1 {
+			name = fmt.Sprintf("%s (copy)", name)
+		} else {
+			name = fmt.Sprintf("%s (copy) %d", export.Workspace.Name, i)
+		}
+	}
+	newWorkspace := Workspace{ID: randomID(), Name: name}
+	for _, conn := range export.Connections {
+		conn.ID = randomID()
+		conn.WorkspaceID = newWorkspace.ID
+		if _, err := s.SaveConnection(conn); err != nil {
+			return Workspace{}, fmt.Errorf("import connection %q: %w", conn.Name, err)
+		}
+	}
+	return s.SaveWorkspace(newWorkspace)
+}
+
+type FullExport struct {
+	Version     int          `json:"version"`
+	Kind        string       `json:"kind"`
+	Workspaces  []Workspace  `json:"workspaces"`
+	Connections []Connection `json:"connections"`
+}
+
+func (s *Store) ExportAll() ([]byte, error) {
+	data, err := s.read()
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(FullExport{
+		Version:     1,
+		Kind:        "dbvibe-backup",
+		Workspaces:  data.Workspaces,
+		Connections: data.Connections,
+	}, "", "  ")
+}
+
+// ImportAll restores a full backup, remapping IDs so nothing collides with
+// existing data. Workspaces and their connections are added, never replaced.
+func (s *Store) ImportAll(data []byte) (int, error) {
+	var export FullExport
+	if err := json.Unmarshal(data, &export); err != nil {
+		return 0, fmt.Errorf("invalid backup file: %w", err)
+	}
+	if export.Kind != "dbvibe-backup" || export.Version != 1 {
+		return 0, errors.New("unsupported backup file")
+	}
+	idMap := make(map[string]string, len(export.Workspaces))
+	for _, ws := range export.Workspaces {
+		ws.Name = strings.TrimSpace(ws.Name)
+		if ws.Name == "" {
+			continue
+		}
+		newWS := Workspace{ID: randomID(), Name: ws.Name}
+		if _, err := s.SaveWorkspace(newWS); err != nil {
+			return 0, fmt.Errorf("import workspace %q: %w", ws.Name, err)
+		}
+		idMap[ws.ID] = newWS.ID
+	}
+	count := 0
+	for _, conn := range export.Connections {
+		conn.ID = randomID()
+		conn.WorkspaceID = idMap[conn.WorkspaceID] // "" (ungrouped) maps to ""
+		if _, err := s.SaveConnection(conn); err != nil {
+			return 0, fmt.Errorf("import connection %q: %w", conn.Name, err)
+		}
+		count++
+	}
+	return count, nil
 }
 
 func (s *Store) ListQueries(connectionID string) ([]SavedQuery, error) {

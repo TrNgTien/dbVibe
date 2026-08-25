@@ -208,7 +208,71 @@ button:disabled {
   overflow: auto;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.startupGroup {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
+}
+
+.startupGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: #c8d0da;
+}
+
+.startupGroupHeader[role="button"] {
+  cursor: pointer;
+}
+
+.startupGroupHeader:hover {
+  background: #1d242e;
+}
+
+.startupGroupHeader.muted {
+  opacity: 0.75;
+}
+
+.startupGroupHeader strong {
+  font-size: 15px;
+}
+
+.startupGroupHeader strong[role="button"] {
+  cursor: pointer;
+}
+
+.startupGroupHeader strong[role="button"]:hover {
+  color: #e8edf2;
+}
+
+.startupGroupHeader > small {
+  color: #7f8996;
+}
+
+.startupGroupChevron {
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7f8996;
+  cursor: pointer;
+}
+
+.startupGroupActions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.startupGroupActions .iconButton {
+  width: 30px;
+  height: 30px;
 }
 
 .startupConnection {
@@ -307,6 +371,30 @@ button:disabled {
 .iconButton:hover {
   background: #202835;
   color: #e8edf2;
+}
+
+/* Tooltip for icon buttons that expose an aria-label */
+.iconButton[aria-label] {
+  position: relative;
+}
+
+.iconButton[aria-label]:hover::after {
+  content: attr(aria-label);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: #0d1117;
+  color: #e8edf2;
+  border: 1px solid #2c333d;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .sidebarTree {
@@ -423,6 +511,35 @@ small {
 
 .contextMenu button:hover {
   background: #202835;
+}
+
+.contextMenu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.contextMenu button:disabled:hover {
+  background: transparent;
+}
+
+.contextMenuDivider {
+  height: 1px;
+  background: #2c333d;
+  margin: 4px 0;
+}
+
+.contextMenuLabel {
+  padding: 5px 9px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7f8996;
+}
+
+.contextMenu .moveCheck {
+  width: 15px;
+  flex: 0 0 auto;
+  color: #3b82f6;
 }
 
 .sidebarPanel {
@@ -1031,12 +1148,102 @@ textarea {
   flex-direction: column;
 }
 
+.workspaceHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  color: #c8d0da;
+  font-weight: 600;
+  cursor: default;
+}
+
+.workspaceHeader[role="button"] {
+  cursor: pointer;
+}
+
+.workspaceHeader:hover {
+  background: #1d242e;
+}
+
+.workspaceHeader .treeChevron {
+  flex: 0 0 auto;
+  cursor: pointer;
+  color: #7f8996;
+}
+
+.workspaceHeader .workspaceName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceHeader .workspaceName[role="button"] {
+  cursor: pointer;
+}
+
+.workspaceHeader .workspaceName[role="button"]:hover {
+  color: #e8edf2;
+}
+
+.workspaceHeader > small {
+  margin-left: auto;
+  color: #7f8996;
+  flex: 0 0 auto;
+}
+
+.workspaceHeader .workspaceActions {
+  display: inline-flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.workspaceHeader .workspaceActions .iconButton {
+  width: 22px;
+  height: 22px;
+}
+
+.workspaceGroup .treeChildren,
+.workspaceGroup > .treeBranch {
+  margin-left: 6px;
+}
+
 .treeChildren {
   display: flex;
   flex-direction: column;
   margin-left: 14px;
   padding-left: 8px;
   border-left: 1px solid #2c333d;
+}
+
+.redisVirtualList {
+  overflow: auto;
+  max-height: 60vh;
+  min-height: 120px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a424e transparent;
+}
+
+.redisVirtualList::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.redisVirtualList::-webkit-scrollbar-thumb {
+  background: #3a424e;
+  border-radius: 4px;
+}
+
+.redisVirtualList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.redisVirtualListInner {
+  position: relative;
+  width: 100%;
 }
 
 .treeItem,
@@ -1862,6 +2069,89 @@ pre {
   min-height: 0;
   display: flex;
 }
+
+.workspacePage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.workspacePanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspacePanel .panelHead small {
+  display: block;
+  margin-top: 4px;
+  color: #95a0ad;
+  font-size: 12px;
+}
+
+.newWorkspace {
+  display: flex;
+  gap: 8px;
+  padding: 10px 10px 0;
+}
+
+.newWorkspace input {
+  flex: 1;
+}
+
+.workspaceList {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.workspaceRow {
+  border: 1px solid #2f3946;
+  background: #151a21;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workspaceRow.active {
+  border-color: #3d78c7;
+}
+
+.workspaceRowName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workspaceRowName strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceRowName small {
+  color: #3d78c7;
+  font-size: 11px;
+}
+
+.workspaceRenameInput {
+  flex: 1;
+}
+
+.workspaceEmpty {
+  margin: auto;
+}
+
+
 
 .exportsPanel {
   flex: 1;
@@ -3854,4 +4144,69 @@ td {
   to {
     transform: rotate(360deg);
   }
+}
+
+.workspaceModal {
+  width: min(420px, calc(100vw - 56px));
+}
+
+.workspaceNameField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  color: #aab3be;
+  font-size: 13px;
+}
+
+.workspaceNameField input {
+  min-height: 38px;
+  border: 1px solid #333a44;
+  background: #191d23;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #e8edf2;
+}
+
+.workspaceConfirmText {
+  padding: 18px 16px;
+  color: #c8d0da;
+  line-height: 1.5;
+}
+
+.modalActions {
+  border-top: 1px solid #2c333d;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modalActions button {
+  min-height: 34px;
+  border: 1px solid #333a44;
+  background: transparent;
+  border-radius: 8px;
+  padding: 0 14px;
+  color: #c8d0da;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.modalActions button.primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.modalActions button.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.modalActions button.danger {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #fff;
 }

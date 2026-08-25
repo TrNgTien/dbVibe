@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { toast, Toaster } from "react-hot-toast";
 import {
   Activity,
   Bot,
@@ -7,8 +8,11 @@ import {
   ChevronsDown,
   Copy,
   Database,
-  Gauge,
   FileDown,
+  FolderPlus,
+  Upload,
+  Download,
+  Gauge,
   Play,
   Plus,
   RefreshCw,
@@ -17,7 +21,6 @@ import {
   Settings,
   Sparkles,
   Table2,
-  Terminal,
   Trash2,
   PanelLeftClose,
   PanelLeftOpen,
@@ -28,6 +31,7 @@ import "./styles.css";
 import { SqlEditor } from "./components/SqlEditor";
 import {
   api,
+  connectionString,
   databaseKey,
   driverLabel,
   eventCombo,
@@ -37,6 +41,7 @@ import {
 import { StartupPage } from "./pages/StartupPage";
 import { TraceLogPage } from "./pages/TraceLogPage";
 import { ExportsPage } from "./pages/ExportsPage";
+import { WorkspacePage } from "./pages/WorkspacePage";
 import { QueryInsightsPage } from "./pages/QueryInsightsPage";
 import { QueryOptimizerPage } from "./pages/QueryOptimizerPage";
 import { ResultPanel, TableInspector } from "./components/ResultPanel";
@@ -351,17 +356,11 @@ function App() {
   const [connectionFilter, setConnectionFilter] = useState("");
   const [loading, setLoading] = useState("");
   const [error, setError] = useState("");
-  const [toast, setToast] = useState("");
   const [exportProgress, setExportProgress] = useState(null);
   const [lastRedisCommand, setLastRedisCommand] = useState("");
-  const toastTimeoutRef = useRef(null);
   const exportToastTimeoutRef = useRef(null);
 
-  const showToast = (message) => {
-    setToast(message);
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    toastTimeoutRef.current = setTimeout(() => setToast(""), 3000);
-  };
+  const showToast = (message) => toast.success(message);
 
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [connectedConnections, setConnectedConnections] = useState({});
@@ -385,6 +384,11 @@ function App() {
   const [settingsDraft, setSettingsDraft] = useState(generalSettings);
   const [shortcutsDraft, setShortcutsDraft] = useState(shortcuts);
   const [workspaceView, setWorkspaceView] = useState("query");
+  const [workspaces, setWorkspaces] = useState([]);
+  const [expandedWorkspaces, setExpandedWorkspaces] = useState({});
+  const [workspacePromptOpen, setWorkspacePromptOpen] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [deleteWorkspaceTarget, setDeleteWorkspaceTarget] = useState(null);
   const [expandedConnections, setExpandedConnections] = useState({}); // { [connId]: boolean }
   const [expandedObjects, setExpandedObjects] = useState({}); // { [connId_databaseKey]: boolean }
   const [sidebarWidth, setSidebarWidth] = useState(360);
@@ -606,6 +610,23 @@ function App() {
     );
   }, [connectionFilter, connections]);
 
+  const groupedConnections = useMemo(() => {
+    const groups = workspaces.map((ws) => ({
+      id: ws.id,
+      name: ws.name,
+      isUngrouped: false,
+      connections: [],
+    }));
+    const byId = {};
+    for (const group of groups) byId[group.id] = group;
+    const ungrouped = { id: "", name: "Ungrouped", isUngrouped: true, connections: [] };
+    for (const conn of filteredConnections) {
+      (byId[conn.workspaceId] || ungrouped).connections.push(conn);
+    }
+    if (ungrouped.connections.length) groups.push(ungrouped);
+    return groups;
+  }, [filteredConnections, workspaces]);
+
   async function run(label, action) {
     setLoading(label);
     setError("");
@@ -622,6 +643,67 @@ function App() {
   async function refreshConnections() {
     const items = await run("connections", () => api.call("ListConnections"));
     setConnections(items || []);
+    const ws = await api.call("ListWorkspaces");
+    setWorkspaces(ws || []);
+  }
+
+  async function createWorkspace(name = workspaceName) {
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return;
+    const ws = await run("create workspace", () =>
+      api.call("SaveWorkspace", { id: "", name: trimmed }),
+    );
+    setExpandedWorkspaces((current) => ({ ...current, [ws.id]: true }));
+    setWorkspacePromptOpen(false);
+    setWorkspaceName("");
+    await refreshConnections();
+    showToast("Workspace created");
+  }
+
+  async function confirmDeleteWorkspace() {
+    if (!deleteWorkspaceTarget) return;
+    const id = deleteWorkspaceTarget.id;
+    await run("delete workspace", () => api.call("DeleteWorkspace", id));
+    setDeleteWorkspaceTarget(null);
+    await refreshConnections();
+    showToast("Workspace deleted");
+  }
+
+  async function exportWorkspace(id) {
+    const path = await run("export workspace", () =>
+      api.call("ExportWorkspace", id),
+    );
+    if (path) showToast("Workspace exported");
+  }
+
+  async function renameWorkspace(id, name) {
+    await run("rename workspace", () =>
+      api.call("SaveWorkspace", { id, name }),
+    );
+    await refreshConnections();
+    showToast("Workspace renamed");
+  }
+
+  async function importWorkspace() {
+    const ws = await run("import workspace", () => api.call("ImportWorkspace"));
+    if (ws?.id) {
+      setExpandedWorkspaces((current) => ({ ...current, [ws.id]: true }));
+      await refreshConnections();
+      showToast(`Imported "${ws.name}"`);
+    }
+  }
+
+  function toggleWorkspaceExpanded(id) {
+    setExpandedWorkspaces((current) => ({ ...current, [id]: !current[id] }));
+  }
+
+  async function moveConnectionToWorkspace(conn, workspaceId) {
+    await run("move connection", () =>
+      api.call("SaveConnection", { ...conn, workspaceId }),
+    );
+    setConnectionMenu(null);
+    await refreshConnections();
+    showToast("Connection moved");
   }
 
   async function saveConnection() {
@@ -685,48 +767,51 @@ function App() {
     }
   }
 
-  async function deleteConnection() {
-    if (!draft.id) return;
-    const connId = draft.id;
+  async function deleteConnection(conn = draft) {
+    if (!conn?.id) return;
+    const connId = conn.id;
     const objectKeyPrefix = `${connId}_`;
-    await run("delete connection", () => api.call("DeleteConnection", connId));
-    setSelected(null);
-    setCreatingConnection(false);
-    setEditingConnection(false);
-    setDraft(defaultConnection);
-    setDetail(null);
-    setTableDetail(null);
-    setConnectionStatus("disconnected");
-    setConnectedConnections((current) => {
-      const next = { ...current };
-      delete next[connId];
-      return next;
-    });
-    setDetails((current) => {
-      const next = { ...current };
-      delete next[connId];
-      return next;
-    });
-    setSqlTexts((current) => {
-      const next = { ...current };
-      delete next[connId];
-      return next;
-    });
-    setExpandedConnections((current) => {
-      const next = { ...current };
-      delete next[connId];
-      return next;
-    });
-    setExpandedObjects((current) => {
-      const next = { ...current };
-      for (const key of Object.keys(next)) {
-        if (key.startsWith(objectKeyPrefix)) {
-          delete next[key];
+    try {
+      await run("delete connection", () => api.call("DeleteConnection", connId));
+    } finally {
+      setSelected(null);
+      setCreatingConnection(false);
+      setEditingConnection(false);
+      setDraft(defaultConnection);
+      setDetail(null);
+      setTableDetail(null);
+      setConnectionStatus("disconnected");
+      setConnectedConnections((current) => {
+        const next = { ...current };
+        delete next[connId];
+        return next;
+      });
+      setDetails((current) => {
+        const next = { ...current };
+        delete next[connId];
+        return next;
+      });
+      setSqlTexts((current) => {
+        const next = { ...current };
+        delete next[connId];
+        return next;
+      });
+      setExpandedConnections((current) => {
+        const next = { ...current };
+        delete next[connId];
+        return next;
+      });
+      setExpandedObjects((current) => {
+        const next = { ...current };
+        for (const key of Object.keys(next)) {
+          if (key.startsWith(objectKeyPrefix)) {
+            delete next[key];
+          }
         }
-      }
-      return next;
-    });
-    await refreshConnections();
+        return next;
+      });
+      await refreshConnections();
+    }
   }
 
   async function testConnection() {
@@ -1219,20 +1304,6 @@ function App() {
     setConnectionMenu(null);
   }
 
-  async function openConnectionTerminal(conn = selected) {
-    if (!conn?.id) return;
-    await run("open terminal", () =>
-      api.call(
-        "OpenConnectionTerminal",
-        conn.id,
-        selected?.id === conn.id
-          ? detail?.database || conn.database || ""
-          : conn.database || "",
-      ),
-    );
-    setConnectionMenu(null);
-  }
-
   function openConnectionMenu(event, conn) {
     event.preventDefault();
     setConnectionMenu({
@@ -1306,6 +1377,92 @@ function App() {
   const editingNewConnection = creatingConnection && !selected;
   const editingConnectionDetails = editingNewConnection || editingConnection;
 
+  const workspaceModals = (
+    <>
+      {workspacePromptOpen && (
+        <div
+          className="modalBackdrop"
+          onMouseDown={() => setWorkspacePromptOpen(false)}
+        >
+          <div
+            className="modalPanel workspaceModal"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="modalHead">
+              <h2>New Workspace</h2>
+              <button
+                className="iconButton"
+                onClick={() => setWorkspacePromptOpen(false)}
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <label className="workspaceNameField">
+              Name
+              <input
+                autoFocus
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") createWorkspace();
+                }}
+                placeholder="e.g. Production"
+              />
+            </label>
+            <div className="modalActions">
+              <button onClick={() => setWorkspacePromptOpen(false)}>
+                Cancel
+              </button>
+              <button
+                className="primary"
+                onClick={createWorkspace}
+                disabled={!workspaceName.trim()}
+              >
+                <FolderPlus size={15} /> Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteWorkspaceTarget && (
+        <div
+          className="modalBackdrop"
+          onMouseDown={() => setDeleteWorkspaceTarget(null)}
+        >
+          <div
+            className="modalPanel workspaceModal"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="modalHead">
+              <h2>Delete Workspace</h2>
+              <button
+                className="iconButton"
+                onClick={() => setDeleteWorkspaceTarget(null)}
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="workspaceConfirmText">
+              Delete "{deleteWorkspaceTarget.name}"? Its connections will be
+              deleted too.
+            </p>
+            <div className="modalActions">
+              <button onClick={() => setDeleteWorkspaceTarget(null)}>
+                Cancel
+              </button>
+              <button className="danger" onClick={confirmDeleteWorkspace}>
+                <Trash2 size={15} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   function startNewConnection() {
     setSelected(null);
     setCreatingConnection(true);
@@ -1321,14 +1478,43 @@ function App() {
 
   if (!selected && !creatingConnection) {
     return (
-      <StartupPage
-        connections={filteredConnections}
-        filter={connectionFilter}
-        setFilter={setConnectionFilter}
-        onSelect={selectConnection}
-        onCreate={startNewConnection}
-        onTogglePin={togglePin}
-      />
+      <>
+        <StartupPage
+          groups={groupedConnections}
+          expandedWorkspaces={expandedWorkspaces}
+          onToggleWorkspace={toggleWorkspaceExpanded}
+          filter={connectionFilter}
+          setFilter={setConnectionFilter}
+          onSelect={selectConnection}
+          onCreate={startNewConnection}
+          onTogglePin={togglePin}
+          onCreateWorkspace={() => {
+            setWorkspaceName("");
+            setWorkspacePromptOpen(true);
+          }}
+          onImportWorkspace={importWorkspace}
+          onExportWorkspace={exportWorkspace}
+          onDeleteWorkspace={(id) =>
+            setDeleteWorkspaceTarget(
+              workspaces.find((w) => w.id === id) || null,
+            )
+          }
+        />
+        {workspaceModals}
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: "#171c23",
+              color: "#c8d0da",
+              border: "1px solid #35404d",
+            },
+            success: {
+              style: { borderColor: "#317d43" },
+            },
+          }}
+        />
+      </>
     );
   }
 
@@ -1358,7 +1544,7 @@ function App() {
                   onClick={() =>
                     selected ? connect(selected) : refreshConnections()
                   }
-                  title="Refresh"
+                  aria-label="Refresh connection"
                 >
                   <RefreshCw size={15} />
                 </button>
@@ -1366,7 +1552,7 @@ function App() {
                   <button
                     className="iconButton"
                     onClick={collapseAll}
-                    title="Collapse All"
+                    aria-label="Collapse all"
                   >
                     <ChevronsUp size={15} />
                   </button>
@@ -1374,7 +1560,7 @@ function App() {
                   <button
                     className="iconButton"
                     onClick={expandAll}
-                    title="Expand All"
+                    aria-label="Expand all"
                   >
                     <ChevronsDown size={15} />
                   </button>
@@ -1382,9 +1568,26 @@ function App() {
                 <button
                   className="iconButton"
                   onClick={startNewConnection}
-                  title="New Connection"
+                  aria-label="New connection"
                 >
                   <Plus size={15} />
+                </button>
+                <button
+                  className="iconButton"
+                  onClick={() => {
+                    setWorkspaceName("");
+                    setWorkspacePromptOpen(true);
+                  }}
+                  aria-label="New workspace"
+                >
+                  <FolderPlus size={15} />
+                </button>
+                <button
+                  className="iconButton"
+                  onClick={importWorkspace}
+                  aria-label="Import workspace"
+                >
+                  <Download size={15} />
                 </button>
               </div>
             </div>
@@ -1403,7 +1606,15 @@ function App() {
                 />
               </label>
               <SidebarTree
-                connections={connections}
+                groups={groupedConnections}
+                expandedWorkspaces={expandedWorkspaces}
+                onToggleWorkspace={toggleWorkspaceExpanded}
+                onExportWorkspace={exportWorkspace}
+                onDeleteWorkspace={(id) =>
+                  setDeleteWorkspaceTarget(
+                    workspaces.find((w) => w.id === id) || null,
+                  )
+                }
                 objectFilter={filter}
                 details={details}
                 expandedConnections={expandedConnections}
@@ -1432,17 +1643,34 @@ function App() {
               <ConnectionContextMenu
                 menu={connectionMenu}
                 connected={!!connectedConnections[connectionMenu.conn.id]}
+                workspaces={workspaces}
                 onCloseConnection={() =>
                   closeConnectedConnection(connectionMenu.conn)
                 }
                 onEditConnection={() => editConnection(connectionMenu.conn)}
-                onOpenTerminal={() =>
-                  openConnectionTerminal(connectionMenu.conn)
-                }
+                onDeleteConnection={async () => {
+                  const conn = connectionMenu.conn;
+                  const confirmed = await api.call(
+                    "ConfirmDeleteConnection",
+                    conn.name,
+                  );
+                  if (!confirmed) return;
+                  setConnectionMenu(null);
+                  await deleteConnection(conn);
+                  showToast("Connection deleted");
+                }}
                 onTogglePin={() => {
                   togglePin(connectionMenu.conn);
                   setConnectionMenu(null);
                 }}
+                onCopyConnectionString={() => {
+                  navigator.clipboard?.writeText(
+                    connectionString(connectionMenu.conn),
+                  );
+                  showToast("Connection string copied");
+                  setConnectionMenu(null);
+                }}
+                onMoveToWorkspace={moveConnectionToWorkspace}
               />
             )}
           </aside>
@@ -1490,6 +1718,12 @@ function App() {
             {!editingConnectionDetails && selected && (
               <div className="viewTabs" aria-label="Workspace">
                 <button
+                  className={workspaceView === "workspace" ? "active" : ""}
+                  onClick={() => setWorkspaceView("workspace")}
+                >
+                  <FolderPlus size={14} /> Workspace
+                </button>
+                <button
                   className={workspaceView === "query" ? "active" : ""}
                   onClick={() => setWorkspaceView("query")}
                 >
@@ -1533,13 +1767,6 @@ function App() {
                 </button>
               </div>
             )}
-            <button
-              title="Open connection terminal"
-              onClick={() => openConnectionTerminal()}
-              disabled={!selected?.id}
-            >
-              <Terminal size={16} />
-            </button>
             <button title="Settings (Cmd+,)" onClick={openSettings}>
               <Settings size={16} />
             </button>
@@ -1556,7 +1783,6 @@ function App() {
 
         {error && <div className="error">{error}</div>}
         {loading && <div className="loading">Running {loading}...</div>}
-        {toast && <div className="toast">{toast}</div>}
         {exportProgress && (
           <div className={`toast exportToast ${exportProgress.status}`}>
             <div className="exportToastHead">
@@ -1596,7 +1822,7 @@ function App() {
                 <div className="panelHead">
                   <h2>Connection Detail</h2>
                 </div>
-                <ConnectionForm draft={draft} setDraft={setDraft} />
+                <ConnectionForm draft={draft} setDraft={setDraft} workspaces={workspaces} />
                 <div className="connectionActions">
                   <div className="rowActions">
                     <button
@@ -1605,7 +1831,10 @@ function App() {
                     >
                       <Copy size={15} /> Duplicate
                     </button>
-                    <button onClick={deleteConnection} disabled={!draft.id}>
+                    <button
+                      onClick={() => deleteConnection()}
+                      disabled={!draft.id}
+                    >
                       <Trash2 size={15} />
                     </button>
                   </div>
@@ -1842,6 +2071,22 @@ function App() {
             onClear={() => setExportedFiles([])}
           />
         )}
+
+        {!editingConnectionDetails && workspaceView === "workspace" && (
+          <WorkspacePage
+            workspaces={workspaces}
+            selected={selected}
+            onCreate={createWorkspace}
+            onImport={importWorkspace}
+            onExport={exportWorkspace}
+            onRename={renameWorkspace}
+            onDelete={(id) =>
+              setDeleteWorkspaceTarget(
+                workspaces.find((w) => w.id === id) || null,
+              )
+            }
+          />
+        )}
       </main>
 
       <AiChatPanel
@@ -1866,6 +2111,21 @@ function App() {
           style={{ right: `${aiPanelWidth - 2}px` }}
         />
       )}
+
+      {workspaceModals}
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: "#171c23",
+            color: "#c8d0da",
+            border: "1px solid #35404d",
+          },
+          success: {
+            style: { borderColor: "#317d43" },
+          },
+        }}
+      />
     </div>
   );
 }

@@ -209,6 +209,110 @@ func TestAISettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestWorkspaceExportImport(t *testing.T) {
+	s := newTestStore(t)
+
+	ws, err := s.SaveWorkspace(Workspace{Name: "Production"})
+	if err != nil {
+		t.Fatalf("SaveWorkspace() error = %v", err)
+	}
+	conn, err := s.SaveConnection(Connection{
+		Name:        "prod-db",
+		Driver:      "mysql",
+		Host:        "db.example.com",
+		Port:        3306,
+		User:        "root",
+		Password:    "secret",
+		WorkspaceID: ws.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveConnection() error = %v", err)
+	}
+
+	exported, err := s.ExportWorkspace(ws.ID)
+	if err != nil {
+		t.Fatalf("ExportWorkspace() error = %v", err)
+	}
+	var exp WorkspaceExport
+	if err := json.Unmarshal(exported, &exp); err != nil {
+		t.Fatalf("unmarshal export error = %v", err)
+	}
+	if exp.Workspace.ID != ws.ID || len(exp.Connections) != 1 {
+		t.Fatalf("export = %#v, want workspace %q with 1 connection", exp, ws.ID)
+	}
+	if exp.Connections[0].Password != "secret" {
+		t.Fatalf("exported password = %q, want secret", exp.Connections[0].Password)
+	}
+
+	imported, err := s.ImportWorkspace(exported)
+	if err != nil {
+		t.Fatalf("ImportWorkspace() error = %v", err)
+	}
+	if imported.ID == ws.ID || imported.ID == "" {
+		t.Fatalf("imported workspace ID = %q, want new ID", imported.ID)
+	}
+	if imported.Name != ws.Name+" (copy)" {
+		t.Fatalf("first import name = %q, want %q", imported.Name, ws.Name+" (copy)")
+	}
+	second, err := s.ImportWorkspace(exported)
+	if err != nil {
+		t.Fatalf("second ImportWorkspace() error = %v", err)
+	}
+	if second.Name != ws.Name+" (copy) 2" {
+		t.Fatalf("duplicate import name = %q, want %q", second.Name, ws.Name+" (copy) 2")
+	}
+	conns, err := s.ListConnections()
+	if err != nil {
+		t.Fatalf("ListConnections() error = %v", err)
+	}
+	if len(conns) != 3 {
+		t.Fatalf("connections = %d, want 3 (original + 2 imports)", len(conns))
+	}
+	importedConn, err := s.GetConnection(conns[1].ID)
+	if err != nil {
+		t.Fatalf("GetConnection() error = %v", err)
+	}
+	if importedConn.ID == conn.ID {
+		t.Fatalf("imported connection reused original ID %q", conn.ID)
+	}
+	if importedConn.WorkspaceID != imported.ID {
+		t.Fatalf("imported connection workspace = %q, want %q", importedConn.WorkspaceID, imported.ID)
+	}
+}
+
+func TestDeleteWorkspaceCascades(t *testing.T) {
+	s := newTestStore(t)
+
+	ws, err := s.SaveWorkspace(Workspace{Name: "Production"})
+	if err != nil {
+		t.Fatalf("SaveWorkspace() error = %v", err)
+	}
+	conn, err := s.SaveConnection(Connection{
+		Name:        "prod-db",
+		Driver:      "mysql",
+		Host:        "db.example.com",
+		Port:        3306,
+		WorkspaceID: ws.ID,
+	})
+	if err != nil {
+		t.Fatalf("SaveConnection() error = %v", err)
+	}
+
+	if err := s.DeleteWorkspace(ws.ID); err != nil {
+		t.Fatalf("DeleteWorkspace() error = %v", err)
+	}
+	workspaces, err := s.ListWorkspaces()
+	if err != nil {
+		t.Fatalf("ListWorkspaces() error = %v", err)
+	}
+	if len(workspaces) != 0 {
+		t.Fatalf("workspaces = %d, want 0 after delete", len(workspaces))
+	}
+	if _, err := s.GetConnection(conn.ID); err == nil {
+		t.Fatalf("connection %q still exists after workspace delete", conn.ID)
+	}
+}
+
 func writeTestData(t *testing.T, s *Store, data dataFile) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
