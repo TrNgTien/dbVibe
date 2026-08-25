@@ -32,7 +32,9 @@ textarea,
 .sqlEditor,
 .sqlEditor *,
 .resultScroll table,
-.resultScroll table * {
+.resultScroll table *,
+.rowDetail,
+.rowDetail * {
   user-select: text;
   -webkit-user-select: text;
 }
