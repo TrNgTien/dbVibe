@@ -4,6 +4,7 @@ WAILS_VERSION ?= v2.10.2
 WAILS ?= go run github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
 PORTABLE_DIR ?= build/portable
 PORTABLE_ZIP ?= $(PORTABLE_DIR)/dbVibe-macos-universal.zip
+RELEASES_DIR ?= releases
 
 export GOCACHE ?= $(CURDIR)/.gocache
 export GOMODCACHE ?= $(CURDIR)/.gomodcache
@@ -13,7 +14,7 @@ help:
 	@echo "Targets:"
 	@echo "  make start          Run the Wails desktop app in dev mode"
 	@echo "  make build          Build the macOS desktop app"
-	@echo "  make build-portable Build a portable macOS zip"
+	@echo "  make build-portable Build a portable macOS zip, bump VERSION, copy into releases/"
 	@echo "  make frontend       Run the Vite frontend only"
 	@echo "  make frontend-build Build the Vite frontend only"
 	@echo "  make deps           Install/download Go and frontend dependencies"
@@ -38,9 +39,14 @@ build:
 	open /Applications/dbVibe.app
 
 build-portable:
-	env -u GOROOT $(WAILS) build -clean -platform darwin/universal
-	mkdir -p $(PORTABLE_DIR)
-	ditto -c -k --sequesterRsrc --keepParent build/bin/dbVibe.app $(PORTABLE_ZIP)
+	NEW_VERSION=$$(./scripts/bump-version.sh); \
+	echo "==> Building dbVibe v$$NEW_VERSION"; \
+	env -u GOROOT $(WAILS) build -clean -platform darwin/universal; \
+	mkdir -p $(PORTABLE_DIR) $(RELEASES_DIR); \
+	ditto -c -k --sequesterRsrc --keepParent build/bin/dbVibe.app $(PORTABLE_ZIP); \
+	cp $(PORTABLE_ZIP) $(RELEASES_DIR)/dbVibe-macos-universal.zip; \
+	cp $(PORTABLE_ZIP) $(RELEASES_DIR)/dbVibe-macos-universal-v$$NEW_VERSION.zip; \
+	echo "==> $(RELEASES_DIR)/dbVibe-macos-universal-v$$NEW_VERSION.zip"
 
 frontend:
 	pnpm -C frontend run dev
