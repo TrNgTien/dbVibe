@@ -25,31 +25,45 @@ brew install mysql-client
 
 ## Install
 
-### From a checkout
+Just want the app? No Go/Node toolchain needed for any of this — clone (or download) the repo and run one of the following.
 
-Build the portable zip from the repo and install it:
+### Quick install (macOS)
+
+Install the prebuilt app checked into the repo:
+
+```bash
+./install.sh releases/dbVibe-macos-universal.zip
+```
+
+Or, once a GitHub Release exists, fetch the latest one automatically:
+
+```bash
+./install.sh
+```
+
+Either way this unzips `dbVibe.app`, clears the quarantine flag (it's unsigned), and installs it to `/Applications`.
+
+### Manual install (macOS)
+
+Prefer doing it by hand?
+
+1. Get a zip: grab the prebuilt zip checked into the repo at [`releases/dbVibe-macos-universal.zip`](releases/dbVibe-macos-universal.zip) and unzip it.
+2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
+   ```bash
+   xattr -cr dbVibe.app
+   ```
+3. Drag `dbVibe.app` to `/Applications`.
+
+### Build from source
+
+Only needed if you're developing dbVibe or want changes newer than the checked-in zip:
 
 ```bash
 make build-portable
 ./install.sh build/portable/dbVibe-macos-universal.zip
 ```
 
-Or point the installer at the zip checked into the repo, or any `dbVibe-macos-universal.zip` you already have:
-
-```bash
-./install.sh releases/dbVibe-macos-universal.zip
-```
-
-### Manual install (macOS)
-
-Prefer doing it by hand?
-
-1. Get a zip: grab the prebuilt zip checked into the repo at [`releases/dbVibe-macos-universal.zip`](releases/dbVibe-macos-universal.zip) and unzip it, or build it yourself with `make build-portable` (produces `build/portable/dbVibe-macos-universal.zip`).
-2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
-   ```bash
-   xattr -cr dbVibe.app
-   ```
-3. Drag `dbVibe.app` to `/Applications`.
+`make build-portable` also bumps `VERSION` and drops a matching `releases/dbVibe-macos-universal-vX.Y.Z.zip` alongside the checked-in `releases/dbVibe-macos-universal.zip`.
 
 ## Platform support
 
