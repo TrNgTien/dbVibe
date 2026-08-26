@@ -570,7 +570,9 @@ small {
 .contextMenu {
   position: fixed;
   z-index: 30;
+  width: max-content;
   min-width: 190px;
+  max-width: 280px;
   border: 1px solid #35404d;
   background: #171c23;
   border-radius: 8px;

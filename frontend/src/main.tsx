@@ -869,6 +869,29 @@ function App() {
 
   async function connect(conn = selected) {
     if (!conn?.id) return;
+    if (connectedConnections[conn.id]) {
+      const cached = details[conn.id] || null;
+      setSelected(conn);
+      setCreatingConnection(false);
+      setEditingConnection(false);
+      setDraft({ ...defaultConnection, ...conn, database: cached?.database });
+      setDetail(cached);
+      setTableDetail(null);
+      setResult(null);
+      setExplain(null);
+      setWorkspaceView("query");
+      setConnectionStatus("connected");
+      setExpandedConnections((current) => ({ ...current, [conn.id]: true }));
+      if (cached) {
+        setExpandedObjects((current) => ({
+          ...current,
+          [`${conn.id}_${databaseKey(cached.database)}`]: true,
+        }));
+      }
+      const savedQueries = await api.call("ListSavedQueries", conn.id);
+      setQueries(savedQueries || []);
+      return cached;
+    }
     setSelected(conn);
     setCreatingConnection(false);
     setEditingConnection(false);
