@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -98,6 +99,9 @@ export function SidebarTree({
   onDeleteRedisKey,
   onNewQuery,
   onContextMenu,
+  selectionMode,
+  selectedConnIds,
+  onToggleConnSelected,
 }) {
   const filterTerm = (objectFilter || "").trim().toLowerCase();
   const matchesFilter = (item) =>
@@ -109,6 +113,7 @@ export function SidebarTree({
       (!!filterTerm && selected?.id === conn.id);
     const detail = details[conn.id];
     const isConnected = connectedConnections[conn.id];
+    const isChecked = selectionMode && selectedConnIds.has(conn.id);
 
     const rawDatabases = detail?.databases?.length
       ? detail.databases
@@ -150,21 +155,46 @@ export function SidebarTree({
     );
 
     return (
-      <div key={conn.id} className="treeBranch">
+      <div
+        key={conn.id}
+        className={`treeBranch ${isChecked ? "rowSelected" : ""}`}
+      >
         <div
           className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
           onContextMenu={(event) => onContextMenu(event, conn)}
         >
+          {selectionMode && (
+            <span
+              className={`connCheckbox ${isChecked ? "checked" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-label={`Toggle select ${conn.name}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleConnSelected(conn);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onToggleConnSelected(conn);
+                }
+              }}
+            >
+              {isChecked && <Check size={12} />}
+            </span>
+          )}
           <span
             className="treeChevron connectionChevron"
             role="button"
             tabIndex={0}
             aria-expanded={isExpanded}
-            onClick={(e) => onToggleConnection(conn, e)}
+            onClick={(e) => {
+              if (!selectionMode) onToggleConnection(conn, e);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onToggleConnection(conn, e);
+                if (!selectionMode) onToggleConnection(conn, e);
               }
             }}
           >
@@ -177,7 +207,11 @@ export function SidebarTree({
           <button
             type="button"
             className="connectionSelect"
-            onClick={() => onSelectConnection(conn)}
+            onClick={() =>
+              selectionMode
+                ? onToggleConnSelected(conn)
+                : onSelectConnection(conn)
+            }
           >
             <span className="connectionName">
               <StatusDot

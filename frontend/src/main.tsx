@@ -4,6 +4,7 @@ import { toast, Toaster } from "react-hot-toast";
 import {
   Activity,
   Bot,
+  Check,
   ChevronsUp,
   ChevronsDown,
   Copy,
@@ -13,6 +14,7 @@ import {
   Upload,
   Download,
   Gauge,
+  ListChecks,
   Play,
   Plus,
   RefreshCw,
@@ -365,6 +367,9 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [connectedConnections, setConnectedConnections] = useState({});
   const [connectionMenu, setConnectionMenu] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedConnIds, setSelectedConnIds] = useState(() => new Set());
+  const [selectionMoveTarget, setSelectionMoveTarget] = useState("");
   const [creatingConnection, setCreatingConnection] = useState(false);
   const [editingConnection, setEditingConnection] = useState(false);
   const [shortcuts, setShortcuts] = useLocalStorage(
@@ -704,6 +709,45 @@ function App() {
     setConnectionMenu(null);
     await refreshConnections();
     showToast("Connection moved");
+  }
+
+  function toggleSelectionMode() {
+    setSelectionMode((current) => {
+      if (current) {
+        setSelectedConnIds(new Set());
+        setSelectionMoveTarget("");
+      }
+      return !current;
+    });
+  }
+
+  function toggleConnSelected(conn) {
+    setSelectedConnIds((current) => {
+      const next = new Set(current);
+      if (next.has(conn.id)) next.delete(conn.id);
+      else next.add(conn.id);
+      return next;
+    });
+  }
+
+  async function moveSelectedConnections() {
+    if (!selectedConnIds.size) return;
+    const target =
+      selectionMoveTarget === ""
+        ? ""
+        : workspaces.find((w) => w.id === selectionMoveTarget)?.id || "";
+    await run("move connections", async () => {
+      for (const conn of connections) {
+        if (selectedConnIds.has(conn.id)) {
+          await api.call("SaveConnection", { ...conn, workspaceId: target });
+        }
+      }
+    });
+    setSelectedConnIds(new Set());
+    setSelectionMoveTarget("");
+    setSelectionMode(false);
+    await refreshConnections();
+    showToast("Connections moved");
   }
 
   async function saveConnection() {
@@ -1573,6 +1617,18 @@ function App() {
                   <Plus size={15} />
                 </button>
                 <button
+                  className={`iconButton ${selectionMode ? "active" : ""}`}
+                  onClick={toggleSelectionMode}
+                  aria-label={
+                    selectionMode ? "Exit select mode" : "Select connections"
+                  }
+                  title={
+                    selectionMode ? "Exit select mode" : "Select connections"
+                  }
+                >
+                  <ListChecks size={15} />
+                </button>
+                <button
                   className="iconButton"
                   onClick={() => {
                     setWorkspaceName("");
@@ -1629,6 +1685,9 @@ function App() {
                 onDeleteRedisKey={deleteRedisKey}
                 onNewQuery={() => editorRef.current?.focus()}
                 onContextMenu={openConnectionMenu}
+                selectionMode={selectionMode}
+                selectedConnIds={selectedConnIds}
+                onToggleConnSelected={toggleConnSelected}
               />
               <SavedQueries
                 queries={queries}
@@ -1639,6 +1698,41 @@ function App() {
                 onDelete={deleteSavedQuery}
               />
             </section>
+            {selectionMode && (
+              <div className="selectionBar">
+                <div className="selectionBarInfo">
+                  <Check size={14} />
+                  <strong>{selectedConnIds.size}</strong>
+                  <span>selected</span>
+                  <button
+                    className="iconButton"
+                    title="Clear selection"
+                    onClick={() => setSelectedConnIds(new Set())}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+                <select
+                  value={selectionMoveTarget}
+                  onChange={(e) => setSelectionMoveTarget(e.target.value)}
+                  aria-label="Move to workspace"
+                >
+                  <option value="">Ungrouped</option>
+                  {workspaces.map((ws) => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="primary"
+                  disabled={!selectedConnIds.size}
+                  onClick={moveSelectedConnections}
+                >
+                  Move
+                </button>
+              </div>
+            )}
             {connectionMenu && (
               <ConnectionContextMenu
                 menu={connectionMenu}

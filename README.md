@@ -59,7 +59,7 @@ to update.
 
 Prefer doing it by hand?
 
-1. Get a zip: `make build-portable` (creates `build/portable/dbVibe-macos-universal.zip`), or download it from the [latest release](https://github.com/TrNgTien/dbVibe/releases/latest) once one is published, then unzip it.
+1. Get a zip: no release published yet, so grab the prebuilt zip checked into the repo at [`releases/dbVibe-macos-universal.zip`](releases/dbVibe-macos-universal.zip) and unzip it. (Or build it yourself with `make build-portable`, which produces `build/portable/dbVibe-macos-universal.zip`.)
 2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
    ```bash
    xattr -cr dbVibe.app

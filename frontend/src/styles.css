@@ -373,6 +373,83 @@ button:disabled {
   color: #e8edf2;
 }
 
+.iconButton.active {
+  background: #1f2d42;
+  color: #4c8dff;
+}
+
+.connCheckbox {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #4a5462;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+}
+
+.connCheckbox:hover {
+  border-color: #6b7686;
+}
+
+.connCheckbox.checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.rowSelected > .connectionItem {
+  background: #1f2d42;
+}
+
+.rowSelected > .connectionItem .connectionSelect {
+  color: #e8edf2;
+}
+
+.selectionBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid #2c333d;
+  background: #141a21;
+}
+
+.selectionBarInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #95a0ad;
+  font-size: 12px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.selectionBarInfo strong {
+  color: #e8edf2;
+}
+
+.selectionBarInfo svg {
+  color: #4c8dff;
+}
+
+.selectionBar select {
+  flex: 1;
+  min-width: 0;
+  background: #171c23;
+  color: #c8d0da;
+  border: 1px solid #35404d;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.selectionBar .primary {
+  flex: 0 0 auto;
+}
+
 /* Tooltip for icon buttons that expose an aria-label */
 .iconButton[aria-label] {
   position: relative;
