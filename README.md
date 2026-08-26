@@ -2,8 +2,6 @@
 
 Minimal macOS database client built with Wails, Go, and React. It focuses on fast database debugging without Electron.
 
-![Release](https://img.shields.io/github/v/release/TrNgTien/dbVibe)
-
 ![dbVibe overview](docs/assets/app-overview.png)
 
 ## Features
@@ -27,39 +25,26 @@ brew install mysql-client
 
 ## Install
 
-### From a checkout (works today)
+### From a checkout
 
-The one-liner below only works once a [release](https://github.com/TrNgTien/dbVibe/releases) is published (none yet). Until then, build the portable zip from the repo and install it:
+Build the portable zip from the repo and install it:
 
 ```bash
 make build-portable
 ./install.sh build/portable/dbVibe-macos-universal.zip
 ```
 
-Or point the installer at any `dbVibe-macos-universal.zip` you already have:
+Or point the installer at the zip checked into the repo, or any `dbVibe-macos-universal.zip` you already have:
 
 ```bash
-./install.sh /path/to/dbVibe-macos-universal.zip
+./install.sh releases/dbVibe-macos-universal.zip
 ```
-
-### Quick install (once a release exists)
-
-Paste this into Terminal and hit Enter — no checkout, no building:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/TrNgTien/dbVibe/main/install.sh | bash
-```
-
-It downloads the latest release, clears the Gatekeeper quarantine flag (the
-build is unsigned, so macOS marks it "damaged" or blocks it otherwise), installs
-`dbVibe.app` to `/Applications`, and opens it. Re-run the same command any time
-to update.
 
 ### Manual install (macOS)
 
 Prefer doing it by hand?
 
-1. Get a zip: no release published yet, so grab the prebuilt zip checked into the repo at [`releases/dbVibe-macos-universal.zip`](releases/dbVibe-macos-universal.zip) and unzip it. (Or build it yourself with `make build-portable`, which produces `build/portable/dbVibe-macos-universal.zip`.)
+1. Get a zip: grab the prebuilt zip checked into the repo at [`releases/dbVibe-macos-universal.zip`](releases/dbVibe-macos-universal.zip) and unzip it, or build it yourself with `make build-portable` (produces `build/portable/dbVibe-macos-universal.zip`).
 2. Clear the quarantine flag so macOS doesn't call the app "damaged" (it's just unsigned):
    ```bash
    xattr -cr dbVibe.app
@@ -68,15 +53,11 @@ Prefer doing it by hand?
 
 ## Platform support
 
-Prebuilt binaries for all three platforms are published on every release:
-
 | Platform | Install | Notes |
 |---|---|---|
 | macOS | `./install.sh` | Prebuilt universal zip, one-line install |
-| Windows | Download `dbVibe-windows-amd64.zip` | Unzip and run `dbVibe.exe` |
-| Linux | Download `dbVibe-linux-amd64.tar.gz` | Extract and run `./dbVibe` |
-
-Downloads are under the [Releases](https://github.com/TrNgTien/dbVibe/releases) page.
+| Windows | Not available yet | |
+| Linux | Not available yet | |
 
 ## How to use
 
