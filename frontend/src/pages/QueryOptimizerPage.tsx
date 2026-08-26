@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import {
   AlertTriangle,
   Check,
@@ -796,6 +797,11 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
   const [speed, setSpeed] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError("");
+  }, [error]);
   const [plan, setPlan] = useState(null); // { root, planningMs, executionMs }
   const [decisionStep, setDecisionStep] = useState(0);
   const [decisionSettled, setDecisionSettled] = useState(false);
@@ -1197,7 +1203,6 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               </div>
             </div>
 
-            {error && <div className="error">{error}</div>}
 
             <div className="optimizerStages">
               {PHASES.map((p, idx) => (

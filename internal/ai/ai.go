@@ -45,6 +45,7 @@ var Providers = []Provider{
 	{ID: "gemini", Label: "Google Gemini", DefaultBase: "https://generativelanguage.googleapis.com/v1beta", DefaultModel: "gemini-2.0-flash", RequiresKey: true, Gemini: true},
 	{ID: "deepseek", Label: "DeepSeek", DefaultBase: "https://api.deepseek.com/v1", DefaultModel: "deepseek-chat", RequiresKey: true},
 	{ID: "openrouter", Label: "OpenRouter", DefaultBase: "https://openrouter.ai/api/v1", DefaultModel: "deepseek/deepseek-chat", RequiresKey: true},
+	{ID: "opencode", Label: "OpenCode", DefaultBase: "https://opencode.ai/zen/go/v1", DefaultModel: "deepseek-v4-pro", RequiresKey: true},
 	{ID: "groq", Label: "Groq", DefaultBase: "https://api.groq.com/openai/v1", DefaultModel: "llama-3.3-70b-versatile", RequiresKey: true},
 	{ID: "mistral", Label: "Mistral", DefaultBase: "https://api.mistral.ai/v1", DefaultModel: "mistral-large-latest", RequiresKey: true},
 	{ID: "xai", Label: "xAI (Grok)", DefaultBase: "https://api.x.ai/v1", DefaultModel: "grok-3-mini", RequiresKey: true},

@@ -66,11 +66,12 @@ type TableDetail struct {
 }
 
 type Column struct {
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Nullable bool   `json:"nullable"`
-	Default  string `json:"default"`
-	Ordinal  int    `json:"ordinal"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Nullable   bool   `json:"nullable"`
+	Default    string `json:"default"`
+	Ordinal    int    `json:"ordinal"`
+	PrimaryKey bool   `json:"primaryKey"`
 }
 
 type Index struct {

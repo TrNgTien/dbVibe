@@ -1,19 +1,99 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { X, Copy, Download, Search } from "lucide-react";
+import {
+  X,
+  Copy,
+  Download,
+  Search,
+  Pencil,
+  Trash2,
+  CopyPlus,
+} from "lucide-react";
+
+const ROW_ACTION_DRIVERS = ["postgres", "mysql", "timescaledb"];
+
+function quoteIdentifier(driver, name) {
+  if (driver === "mysql") return "`" + String(name).replace(/`/g, "``") + "`";
+  return '"' + String(name).replace(/"/g, '""') + '"';
+}
+
+function quoteLiteral(value) {
+  if (value === null || value === undefined || value === "NULL") return "NULL";
+  return "'" + String(value).replace(/'/g, "''") + "'";
+}
+
+function qualifiedTableName(driver, table) {
+  const schema = table?.table?.schema;
+  const name = table?.table?.name;
+  if (!name) return "";
+  return schema
+    ? `${quoteIdentifier(driver, schema)}.${quoteIdentifier(driver, name)}`
+    : quoteIdentifier(driver, name);
+}
+
+function primaryKeyColumns(table, columns) {
+  const pk = (table?.columns || [])
+    .filter((c) => c.primaryKey)
+    .map((c) => c.name)
+    .filter((name) => columns.includes(name));
+  return pk.length ? pk : columns;
+}
+
+function buildUpdateSql(driver, table, columns, row) {
+  const whereCols = primaryKeyColumns(table, columns);
+  const setClause = columns
+    .map((col) => `  ${quoteIdentifier(driver, col)} = ${quoteLiteral(row[col])}`)
+    .join(",\n");
+  const whereClause = whereCols
+    .map((col) => `${quoteIdentifier(driver, col)} = ${quoteLiteral(row[col])}`)
+    .join(" AND ");
+  return `UPDATE ${qualifiedTableName(driver, table)}\nSET\n${setClause}\nWHERE ${whereClause};`;
+}
+
+function buildDeleteSql(driver, table, columns, row) {
+  const whereCols = primaryKeyColumns(table, columns);
+  const whereClause = whereCols
+    .map((col) => `${quoteIdentifier(driver, col)} = ${quoteLiteral(row[col])}`)
+    .join(" AND ");
+  return `DELETE FROM ${qualifiedTableName(driver, table)}\nWHERE ${whereClause};`;
+}
+
+function buildInsertSql(driver, table, columns, rows) {
+  const columnList = columns.map((col) => quoteIdentifier(driver, col)).join(", ");
+  const valuesList = rows
+    .map((row) => `  (${columns.map((col) => quoteLiteral(row[col])).join(", ")})`)
+    .join(",\n");
+  return `INSERT INTO ${qualifiedTableName(driver, table)} (${columnList})\nVALUES\n${valuesList};`;
+}
 
 export function ResultPanel({
   title,
   result,
+  table,
+  driver,
+  onAppendQuery,
   onUpdateTTL,
   onExport,
   gridSettings = {},
+  onToast,
 }) {
   const [selectedRow, setSelectedRow] = useState(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedRows, setSelectedRows] = useState(() => new Set());
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const rowDensity = gridSettings.resultRowDensity || "normal";
   const nullDisplay = gridSettings.nullDisplay || "NULL";
   const showAlternateRows = gridSettings.showAlternateRows ?? true;
+
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedRows(new Set());
+  }, [result]);
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedRows(new Set());
+  };
 
   // Add click outside handler for export menu
   useEffect(() => {
@@ -39,6 +119,76 @@ export function ResultPanel({
     ) : (
       value
     );
+
+  const canRowActions =
+    !isExplain &&
+    ROW_ACTION_DRIVERS.includes(driver) &&
+    !!table?.table?.name &&
+    !!table?.columns?.length &&
+    !!onAppendQuery;
+
+  const toggleRow = (index: number) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedRows((prev) =>
+      prev.size === (result.rows || []).length
+        ? new Set()
+        : new Set((result.rows || []).map((_, index) => index)),
+    );
+  };
+
+  const selectedRowData = () =>
+    (result.rows || []).filter((_, index) => selectedRows.has(index));
+
+  const handleEditClick = () => {
+    if (!selectionMode) {
+      setSelectionMode(true);
+      return;
+    }
+    const rows = selectedRowData();
+    if (rows.length !== 1) return;
+    onAppendQuery?.(buildUpdateSql(driver, table, result.columns, rows[0]));
+    onToast?.("UPDATE statement appended to editor");
+    exitSelection();
+  };
+
+  const handleDeleteClick = () => {
+    if (!selectionMode) {
+      setSelectionMode(true);
+      return;
+    }
+    const rows = selectedRowData();
+    if (!rows.length) return;
+    const sql = rows
+      .map((row) => buildDeleteSql(driver, table, result.columns, row))
+      .join("\n");
+    onAppendQuery?.(sql);
+    onToast?.(
+      `DELETE statement${rows.length === 1 ? "" : "s"} for ${rows.length} row${rows.length === 1 ? "" : "s"} appended to editor`,
+    );
+    exitSelection();
+  };
+
+  const handleDuplicateClick = () => {
+    if (!selectionMode) {
+      setSelectionMode(true);
+      return;
+    }
+    const rows = selectedRowData();
+    if (!rows.length) return;
+    onAppendQuery?.(buildInsertSql(driver, table, result.columns, rows));
+    onToast?.(
+      `INSERT statement for ${rows.length} row${rows.length === 1 ? "" : "s"} appended to editor`,
+    );
+    exitSelection();
+  };
 
   const handleExport = async (format: "csv" | "json") => {
     setExportMenuOpen(false);
@@ -95,7 +245,7 @@ export function ResultPanel({
         rows: result.rows.length,
       });
     } catch (e) {
-      console.error("Export failed:", e);
+      onToast?.(e?.message || "Export failed");
     }
   };
 
@@ -106,6 +256,60 @@ export function ResultPanel({
       <div className="panelHead">
         <h2>{title}</h2>
         <div className="rowActions">
+          {canRowActions && (
+            <>
+              <button
+                className={`iconButton${selectionMode ? " active" : ""}`}
+                disabled={selectionMode && selectedRows.size !== 1}
+                onClick={handleEditClick}
+                title={
+                  selectionMode
+                    ? "Generate UPDATE for selected row"
+                    : "Select a row to edit"
+                }
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                className={`iconButton${selectionMode ? " active" : ""}`}
+                disabled={selectionMode && selectedRows.size === 0}
+                onClick={handleDuplicateClick}
+                title={
+                  selectionMode
+                    ? "Generate INSERT (duplicate) for selected row(s)"
+                    : "Select rows to duplicate"
+                }
+              >
+                <CopyPlus size={14} />
+              </button>
+              <button
+                className={`iconButton${selectionMode ? " active" : ""}`}
+                disabled={selectionMode && selectedRows.size === 0}
+                onClick={handleDeleteClick}
+                title={
+                  selectionMode
+                    ? "Generate DELETE for selected row(s)"
+                    : "Select rows to delete"
+                }
+              >
+                <Trash2 size={14} />
+              </button>
+              {selectionMode && (
+                <>
+                  <span className="rowSelectionCount">
+                    {selectedRows.size} selected
+                  </span>
+                  <button
+                    className="iconButtonText"
+                    onClick={exitSelection}
+                    title="Cancel row selection"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+            </>
+          )}
           {result.columns?.length > 0 && result.rows?.length > 0 && (
             <div
               className="exportContainer"
@@ -177,6 +381,21 @@ export function ResultPanel({
           <table>
             <thead>
               <tr>
+                {canRowActions && selectionMode && (
+                  <th className="rowCheckboxCell">
+                    <label className="rowCheckboxLabel">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedRows.size > 0 &&
+                          selectedRows.size === (result.rows || []).length
+                        }
+                        onChange={toggleAll}
+                        aria-label="Select all rows"
+                      />
+                    </label>
+                  </th>
+                )}
                 {result.columns.map((column) => (
                   <th key={column}>{column}</th>
                 ))}
@@ -186,9 +405,28 @@ export function ResultPanel({
               {(result.rows || []).map((row, index) => (
                 <tr
                   key={index}
-                  className="clickableRow"
-                  onClick={() => setSelectedRow({ row, index })}
+                  className={`clickableRow${selectionMode && selectedRows.has(index) ? " selectedRow" : ""}`}
+                  onClick={() =>
+                    selectionMode
+                      ? toggleRow(index)
+                      : setSelectedRow({ row, index })
+                  }
                 >
+                  {canRowActions && selectionMode && (
+                    <td
+                      className="rowCheckboxCell"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <label className="rowCheckboxLabel">
+                        <input
+                          type="checkbox"
+                          checked={selectedRows.has(index)}
+                          onChange={() => toggleRow(index)}
+                          aria-label={`Select row ${index + 1}`}
+                        />
+                      </label>
+                    </td>
+                  )}
                   {result.columns.map((column) => (
                     <td key={column}>{formatCellValue(row[column])}</td>
                   ))}

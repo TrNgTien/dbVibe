@@ -212,10 +212,21 @@ func inspectMySQLTable(ctx context.Context, db *sql.DB, database, table string, 
 
 func postgresColumns(ctx context.Context, db *sql.DB, schema, table string) ([]Column, error) {
 	rows, err := db.QueryContext(ctx, `
-		select column_name, data_type, is_nullable = 'YES', coalesce(column_default, ''), ordinal_position
-		from information_schema.columns
-		where table_schema = $1 and table_name = $2
-		order by ordinal_position`, schema, table)
+		select c.column_name, c.data_type, c.is_nullable = 'YES', coalesce(c.column_default, ''), c.ordinal_position,
+			exists (
+				select 1
+				from information_schema.table_constraints tc
+				join information_schema.key_column_usage kcu
+					on tc.constraint_name = kcu.constraint_name
+					and tc.table_schema = kcu.table_schema
+				where tc.constraint_type = 'PRIMARY KEY'
+					and tc.table_schema = c.table_schema
+					and tc.table_name = c.table_name
+					and kcu.column_name = c.column_name
+			)
+		from information_schema.columns c
+		where c.table_schema = $1 and c.table_name = $2
+		order by c.ordinal_position`, schema, table)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +236,8 @@ func postgresColumns(ctx context.Context, db *sql.DB, schema, table string) ([]C
 
 func mysqlColumns(ctx context.Context, db *sql.DB, database, table string) ([]Column, error) {
 	rows, err := db.QueryContext(ctx, `
-		select column_name, column_type, is_nullable = 'YES', coalesce(column_default, ''), ordinal_position
+		select column_name, column_type, is_nullable = 'YES', coalesce(column_default, ''), ordinal_position,
+			column_key = 'PRI'
 		from information_schema.columns
 		where table_schema = ? and table_name = ?
 		order by ordinal_position`, database, table)
@@ -387,7 +399,7 @@ func scanColumns(rows *sql.Rows) ([]Column, error) {
 	items := make([]Column, 0)
 	for rows.Next() {
 		var item Column
-		if err := rows.Scan(&item.Name, &item.Type, &item.Nullable, &item.Default, &item.Ordinal); err != nil {
+		if err := rows.Scan(&item.Name, &item.Type, &item.Nullable, &item.Default, &item.Ordinal, &item.PrimaryKey); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

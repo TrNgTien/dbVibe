@@ -419,7 +419,6 @@ function tableCompletionOptions(detail, schema = "") {
     )
     .map((table) => ({
       label: table.name,
-      detail: `${table.schema} ${table.type || "table"}`,
       apply:
         schema && detail?.driver !== "mysql"
           ? `"${table.name}"`

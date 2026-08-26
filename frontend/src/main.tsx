@@ -243,6 +243,56 @@ function withDefaultSelectLimit(sqlText, limit = 100) {
   return `${base} limit ${limit}${semicolons}`;
 }
 
+// Splits a SQL blob into individual statements on top-level semicolons,
+// ignoring semicolons inside string/backtick literals and comments so a
+// multi-statement selection can be run one statement at a time.
+function splitSqlStatements(sqlText) {
+  const statements = [];
+  let current = "";
+  let quote = null;
+  let i = 0;
+  const text = String(sqlText || "");
+  while (i < text.length) {
+    const ch = text[i];
+    if (quote) {
+      current += ch;
+      if (ch === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch;
+      current += ch;
+      i++;
+      continue;
+    }
+    if (ch === "-" && text[i + 1] === "-") {
+      const end = text.indexOf("\n", i);
+      const comment = end === -1 ? text.slice(i) : text.slice(i, end);
+      current += comment;
+      i += comment.length;
+      continue;
+    }
+    if (ch === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      const comment = end === -1 ? text.slice(i) : text.slice(i, end + 2);
+      current += comment;
+      i += comment.length;
+      continue;
+    }
+    if (ch === ";") {
+      statements.push(current);
+      current = "";
+      i++;
+      continue;
+    }
+    current += ch;
+    i++;
+  }
+  if (current.trim()) statements.push(current);
+  return statements.map((s) => s.trim()).filter(Boolean);
+}
+
 function sqlIdentifierTokens(sqlText) {
   const tokens = [];
 
@@ -303,7 +353,7 @@ function sqlIdentifierTokens(sqlText) {
   return tokens;
 }
 
-function findQueryTable(sqlText, tables = []) {
+function findQueryTable(sqlText) {
   const keyword = firstSqlKeyword(sqlText);
   if (keyword !== "select" && keyword !== "with") return null;
 
@@ -320,12 +370,7 @@ function findQueryTable(sqlText, tables = []) {
       table = tokens[i + 3];
     }
 
-    const matches = tables.filter(
-      (item) =>
-        item.name.toLowerCase() === table.toLowerCase() &&
-        (!schema || item.schema.toLowerCase() === schema.toLowerCase()),
-    );
-    if (matches.length === 1) return matches[0];
+    return { schema, name: table };
   }
 
   return null;
@@ -353,7 +398,18 @@ function App() {
           : next,
     }));
   const [result, setResult] = useState(null);
+  const [resultTabs, setResultTabs] = useState([]);
+  const [activeResultTab, setActiveResultTab] = useState(0);
   const [explain, setExplain] = useState(null);
+
+  // Sets a single, non-tabbed result and clears any stale multi-statement
+  // tabs from a previous run so sidebar/table/redis-key clicks don't leave
+  // an old tab's result showing behind the new one.
+  function applyResult(next) {
+    setResult(next);
+    setResultTabs(next ? [{ label: "Query 1", statement: "", result: next }] : []);
+    setActiveResultTab(0);
+  }
   const [filter, setFilter] = useState("");
   const [connectionFilter, setConnectionFilter] = useState("");
   const [loading, setLoading] = useState("");
@@ -363,6 +419,20 @@ function App() {
   const exportToastTimeoutRef = useRef(null);
 
   const showToast = (message) => toast.success(message);
+
+  useEffect(() => {
+    if (!error) return;
+    toast.error(error);
+    setError("");
+  }, [error]);
+
+  useEffect(() => {
+    if (loading) {
+      toast.loading(`Running ${loading}...`, { id: "run-loading" });
+    } else {
+      toast.dismiss("run-loading");
+    }
+  }, [loading]);
 
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
   const [connectedConnections, setConnectedConnections] = useState({});
@@ -506,7 +576,7 @@ function App() {
           lastRedisCommand,
           generalSettings.queryResultLimit ?? 500,
         );
-        setResult(next);
+        applyResult(next);
       } catch (err) {
         setError(err?.message || String(err));
       }
@@ -795,7 +865,7 @@ function App() {
     });
     setDetail(null);
     setTableDetail(null);
-    setResult(null);
+    applyResult(null);
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus("disconnected");
@@ -877,7 +947,7 @@ function App() {
       setDraft({ ...defaultConnection, ...conn, database: cached?.database });
       setDetail(cached);
       setTableDetail(null);
-      setResult(null);
+      applyResult(null);
       setExplain(null);
       setWorkspaceView("query");
       setConnectionStatus("connected");
@@ -898,7 +968,7 @@ function App() {
     setDraft({ ...defaultConnection, ...conn });
     setDetail(null);
     setTableDetail(null);
-    setResult(null);
+    applyResult(null);
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus("connecting");
@@ -944,7 +1014,7 @@ function App() {
       setDraft({ ...defaultConnection, ...conn });
       setDetail(details[connId] || null);
       setTableDetail(null);
-      setResult(null);
+      applyResult(null);
       setExplain(null);
       setWorkspaceView("query");
     }
@@ -957,7 +1027,7 @@ function App() {
       setDetail(next);
       setDraft((current) => ({ ...current, database: next.database }));
       setTableDetail(null);
-      setResult(null);
+      applyResult(null);
       setExplain(null);
       setConnectionStatus("connected");
       if (switchingConnection) {
@@ -1022,7 +1092,7 @@ function App() {
         ),
       );
       setTableDetail(null);
-      setResult(next);
+      applyResult(next);
       setLastRedisCommand(command);
       setShowTableDetail(false);
       return;
@@ -1045,7 +1115,7 @@ function App() {
       );
       setTableDetail(next);
       setShowTableDetail(false);
-      setResult(next.sample);
+      applyResult(next.sample);
       setSqlText(command);
       return;
     }
@@ -1061,7 +1131,7 @@ function App() {
     );
     setTableDetail(next);
     setShowTableDetail(false);
-    setResult(next.sample);
+    applyResult(next.sample);
     setSqlText(
       `select * from ${quoteName(driver, table.schema, table.name)} limit ${generalSettings.defaultSelectLimit ?? 100}`,
     );
@@ -1091,7 +1161,7 @@ function App() {
       api.call("DeleteRedisKey", connId, databaseName, displayName),
     );
     if (result?.redisKey === displayName) {
-      setResult(null);
+      applyResult(null);
       setLastRedisCommand("");
     }
     await refreshRedisConnection(connId, databaseName);
@@ -1100,48 +1170,62 @@ function App() {
   async function execute() {
     if (!selected?.id) return;
     const selection = editorRef.current?.getSelection?.();
-    const queryToRun =
-      selected.driver === "redis"
+    const isPlainSqlDriver =
+      selected.driver !== "redis" && selected.driver !== "mongodb";
+    const rawQuery = isPlainSqlDriver
+      ? selection || sqlText
+      : selected.driver === "redis"
         ? redisCommandToRun(
             selection,
             editorRef.current?.getCurrentLine?.(),
             sqlText,
           )
-        : selected.driver === "mongodb"
-          ? selection || sqlText
-        : withDefaultSelectLimit(
-            selection || sqlText,
-            generalSettings.defaultSelectLimit ?? 100,
-          );
-    if (!queryToRun) return;
+        : selection || sqlText;
+    if (!rawQuery) return;
+    const statements = isPlainSqlDriver
+      ? splitSqlStatements(rawQuery)
+      : [rawQuery];
+    if (statements.length === 0) return;
     const redisHasSingleCommand =
       selected.driver === "redis" &&
       sqlText.split(/\r?\n/).filter((line) => line.trim()).length === 1;
     if (
       !selection &&
-      queryToRun !== sqlText &&
+      rawQuery !== sqlText &&
       (selected.driver !== "redis" || redisHasSingleCommand)
     ) {
-      setSqlText(queryToRun);
+      setSqlText(rawQuery);
     }
-    const next = await run("execute", () =>
-      api.call(
-        "ExecuteDatabase",
-        selected.id,
-        detail?.database || "",
-        queryToRun,
-        generalSettings.queryResultLimit ?? 500,
-      ),
-    );
-    setResult(next);
+    let next;
+    const tabs = [];
+    for (const statement of statements) {
+      const stmt = isPlainSqlDriver
+        ? withDefaultSelectLimit(
+            statement,
+            generalSettings.defaultSelectLimit ?? 100,
+          )
+        : statement;
+      next = await run("execute", () =>
+        api.call(
+          "ExecuteDatabase",
+          selected.id,
+          detail?.database || "",
+          stmt,
+          generalSettings.queryResultLimit ?? 500,
+        ),
+      );
+      tabs.push({ label: `Query ${tabs.length + 1}`, statement, result: next });
+      setResult(next);
+      setResultTabs([...tabs]);
+      setActiveResultTab(tabs.length - 1);
+    }
+    const queryToRun = statements[statements.length - 1];
     setExplain(null);
     if (selected.driver === "redis") {
       setLastRedisCommand(queryToRun);
     }
     const queryTable =
-      selected.driver === "mongodb"
-        ? null
-        : findQueryTable(queryToRun, detail?.tables || []);
+      selected.driver === "mongodb" ? null : findQueryTable(queryToRun);
     if (queryTable) {
       try {
         const nextTableDetail = await api.call(
@@ -1163,6 +1247,15 @@ function App() {
     setShowTableDetail(false);
   }
 
+  function appendToEditor(sql) {
+    if (!sql) return;
+    setSqlText((prev) => {
+      const trimmed = (prev || "").trimEnd();
+      return trimmed ? `${trimmed}\n\n${sql}` : sql;
+    });
+    requestAnimationFrame(() => editorRef.current?.focus());
+  }
+
   async function explainAnalyze() {
     if (!selected?.id) return;
     const selection = editorRef.current?.getSelection?.();
@@ -1176,7 +1269,7 @@ function App() {
       ),
     );
     setExplain(next);
-    setResult(null);
+    applyResult(null);
   }
 
   function askSelection() {
@@ -1321,7 +1414,7 @@ function App() {
     setDraft({ ...defaultConnection, ...conn });
     setDetail(null);
     setTableDetail(null);
-    setResult(null);
+    applyResult(null);
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus(
@@ -1365,7 +1458,7 @@ function App() {
       setConnectionStatus("disconnected");
       setDetail(null);
       setTableDetail(null);
-      setResult(null);
+      applyResult(null);
       setExplain(null);
     }
     setConnectionMenu(null);
@@ -1537,7 +1630,7 @@ function App() {
     setDraft(defaultConnection);
     setDetail(null);
     setTableDetail(null);
-    setResult(null);
+    applyResult(null);
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus("disconnected");
@@ -1898,8 +1991,6 @@ function App() {
           </div>
         </header>
 
-        {error && <div className="error">{error}</div>}
-        {loading && <div className="loading">Running {loading}...</div>}
         {exportProgress && (
           <div className={`toast exportToast ${exportProgress.status}`}>
             <div className="exportToastHead">
@@ -2130,11 +2221,29 @@ function App() {
                 }}
               />
               <section className="content">
+                {resultTabs.length > 1 && (
+                  <div className="resultTabs">
+                    {resultTabs.map((tab, index) => (
+                      <button
+                        key={index}
+                        className={index === activeResultTab ? "active" : ""}
+                        title={tab.statement}
+                        onClick={() => setActiveResultTab(index)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <ResultPanel
                   title="Rows"
-                  result={result}
+                  result={resultTabs[activeResultTab]?.result ?? result}
+                  table={tableDetail}
+                  driver={selected?.driver}
+                  onAppendQuery={appendToEditor}
                   onExport={exportQueryResult}
                   gridSettings={generalSettings}
+                  onToast={showToast}
                   onUpdateTTL={async (seconds) => {
                     const cmd =
                       seconds === -1
@@ -2155,8 +2264,12 @@ function App() {
                 <ResultPanel
                   title="Explain Analyze"
                   result={explain}
+                  table={null}
+                  driver={null}
+                  onAppendQuery={null}
                   onExport={exportQueryResult}
                   gridSettings={generalSettings}
+                  onToast={showToast}
                   onUpdateTTL={() => {}}
                 />
               </section>
@@ -2213,7 +2326,12 @@ function App() {
         visible={aiPanelVisible}
         onClose={() => setAiPanelVisible(false)}
         onInsertQuery={(sql) => {
-          if (sql) setSqlText(sql);
+          if (sql) {
+            setSqlText((current) => {
+              const trimmed = (current || "").trimEnd();
+              return trimmed ? `${trimmed}\n\n${sql}` : sql;
+            });
+          }
           setAiPanelVisible(true);
         }}
         onToast={showToast}
