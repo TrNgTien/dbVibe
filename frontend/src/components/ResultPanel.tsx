@@ -8,8 +8,32 @@ import {
   Trash2,
   CopyPlus,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 const ROW_ACTION_DRIVERS = ["postgres", "mysql", "timescaledb"];
+
+const densityClasses = {
+  compact: "[&_th]:px-[7px] [&_th]:py-1 [&_td]:px-[7px] [&_td]:py-1",
+  comfortable:
+    "[&_th]:px-[9px] [&_th]:py-2.5 [&_td]:px-[9px] [&_td]:py-2.5",
+  normal: "[&_th]:px-2 [&_th]:py-[7px] [&_td]:px-2 [&_td]:py-[7px]",
+};
 
 function quoteIdentifier(driver, name) {
   if (driver === "mysql") return "`" + String(name).replace(/`/g, "``") + "`";
@@ -73,14 +97,12 @@ export function ResultPanel({
   onAppendQuery,
   onUpdateTTL,
   onExport,
-  gridSettings = {},
+  gridSettings = {} as Record<string, any>,
   onToast,
 }) {
   const [selectedRow, setSelectedRow] = useState(null);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRows, setSelectedRows] = useState(() => new Set());
-  const exportMenuRef = useRef<HTMLDivElement>(null);
   const rowDensity = gridSettings.resultRowDensity || "normal";
   const nullDisplay = gridSettings.nullDisplay || "NULL";
   const showAlternateRows = gridSettings.showAlternateRows ?? true;
@@ -95,27 +117,11 @@ export function ResultPanel({
     setSelectedRows(new Set());
   };
 
-  // Add click outside handler for export menu
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        exportMenuRef.current &&
-        !exportMenuRef.current.contains(event.target as Node)
-      ) {
-        setExportMenuOpen(false);
-      }
-    }
-    if (exportMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [exportMenuOpen]);
-
   if (!result) return null;
   const isExplain = title.toLowerCase().includes("explain");
   const formatCellValue = (value) =>
     value === null || value === undefined || value === "NULL" ? (
-      <span className="nullValue">{nullDisplay}</span>
+      <span className="italic text-muted-foreground">{nullDisplay}</span>
     ) : (
       value
     );
@@ -191,7 +197,6 @@ export function ResultPanel({
   };
 
   const handleExport = async (format: "csv" | "json") => {
-    setExportMenuOpen(false);
     if (!result.columns || !result.rows || result.rows.length === 0) {
       return;
     }
@@ -208,7 +213,6 @@ export function ResultPanel({
         filterName = "JSON Files (*.json)";
         filterPattern = "*.json";
       } else if (format === "csv") {
-        // Escape CSV field
         const escapeCSV = (val: any) => {
           if (val === null || val === undefined) return "";
           const str = String(val);
@@ -251,15 +255,21 @@ export function ResultPanel({
 
   return (
     <section
-      className={`panel resultPanel resultDensity-${rowDensity}${showAlternateRows ? " alternateRows" : ""}`}
+      className={cn(
+        "flex min-h-[180px] flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card",
+        densityClasses[rowDensity] || densityClasses.normal,
+        showAlternateRows && "[&_tbody_tr:nth-child(even)_td]:bg-muted/30",
+      )}
     >
-      <div className="panelHead">
-        <h2>{title}</h2>
-        <div className="rowActions">
+      <div className="flex min-h-[45px] flex-none items-center justify-between gap-3 border-b border-border px-3 py-[9px]">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <div className="flex flex-none items-center gap-1.5">
           {canRowActions && (
             <>
-              <button
-                className={`iconButton${selectionMode ? " active" : ""}`}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(selectionMode && "bg-accent text-primary")}
                 disabled={selectionMode && selectedRows.size !== 1}
                 onClick={handleEditClick}
                 title={
@@ -268,10 +278,12 @@ export function ResultPanel({
                     : "Select a row to edit"
                 }
               >
-                <Pencil size={14} />
-              </button>
-              <button
-                className={`iconButton${selectionMode ? " active" : ""}`}
+                <Pencil />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(selectionMode && "bg-accent text-primary")}
                 disabled={selectionMode && selectedRows.size === 0}
                 onClick={handleDuplicateClick}
                 title={
@@ -280,10 +292,12 @@ export function ResultPanel({
                     : "Select rows to duplicate"
                 }
               >
-                <CopyPlus size={14} />
-              </button>
-              <button
-                className={`iconButton${selectionMode ? " active" : ""}`}
+                <CopyPlus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(selectionMode && "bg-accent text-primary")}
                 disabled={selectionMode && selectedRows.size === 0}
                 onClick={handleDeleteClick}
                 title={
@@ -292,65 +306,56 @@ export function ResultPanel({
                     : "Select rows to delete"
                 }
               >
-                <Trash2 size={14} />
-              </button>
+                <Trash2 />
+              </Button>
               {selectionMode && (
                 <>
-                  <span className="rowSelectionCount">
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">
                     {selectedRows.size} selected
                   </span>
-                  <button
-                    className="iconButtonText"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground hover:text-foreground"
                     onClick={exitSelection}
                     title="Cancel row selection"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </>
               )}
             </>
           )}
           {result.columns?.length > 0 && result.rows?.length > 0 && (
-            <div
-              className="exportContainer"
-              style={{ position: "relative" }}
-              ref={exportMenuRef}
-            >
-              <button
-                className="iconButton"
-                onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                title="Export Results"
-              >
-                <Download size={14} />
-              </button>
-              {exportMenuOpen && (
-                <div
-                  className="contextMenu"
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    right: 0,
-                    marginTop: "4px",
-                  }}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Export Results"
                 >
-                  <button onClick={() => handleExport("csv")}>
-                    Export to CSV
-                  </button>
-                  <button onClick={() => handleExport("json")}>
-                    Export to JSON
-                  </button>
-                </div>
-              )}
-            </div>
+                  <Download />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => handleExport("csv")}>
+                  Export to CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => handleExport("json")}>
+                  Export to JSON
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {result.redisKey && (
-            <div className="ttlDisplay">
-              <span>
+            <div className="flex items-center gap-2 border-r border-border py-0.5 pr-3 mr-3">
+              <span className="text-xs text-foreground/70">
                 {result.redisTTL === -1
                   ? "TTL: persistent forever"
                   : `TTL: ${result.redisTTL}s`}
               </span>
-              <select
+              <NativeSelect
+                size="sm"
                 onChange={(e) => {
                   if (e.target.value) {
                     onUpdateTTL(Number(e.target.value));
@@ -367,37 +372,41 @@ export function ResultPanel({
                 <option value="300">5 minutes</option>
                 <option value="3600">1 hour</option>
                 <option value="86400">1 day</option>
-              </select>
+              </NativeSelect>
             </div>
           )}
-          <span>
+          <span className="text-xs text-muted-foreground">
             {result.durationMs ?? 0}ms{" "}
             {result.message ? `· ${result.message}` : ""}
           </span>
         </div>
       </div>
       {result.columns?.length ? (
-        <div className="resultScroll">
-          <table>
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full border-collapse text-xs">
             <thead>
               <tr>
                 {canRowActions && selectionMode && (
-                  <th className="rowCheckboxCell">
-                    <label className="rowCheckboxLabel">
-                      <input
-                        type="checkbox"
+                  <th className="w-8 p-0 text-center">
+                    <label className="flex h-full w-full cursor-pointer items-center justify-center p-1.5">
+                      <Checkbox
                         checked={
                           selectedRows.size > 0 &&
                           selectedRows.size === (result.rows || []).length
                         }
-                        onChange={toggleAll}
+                        onCheckedChange={toggleAll}
                         aria-label="Select all rows"
                       />
                     </label>
                   </th>
                 )}
                 {result.columns.map((column) => (
-                  <th key={column}>{column}</th>
+                  <th
+                    key={column}
+                    className="sticky top-0 z-10 border-b border-r border-border bg-muted/80 text-left font-semibold text-foreground backdrop-blur-sm"
+                  >
+                    {column}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -405,7 +414,12 @@ export function ResultPanel({
               {(result.rows || []).map((row, index) => (
                 <tr
                   key={index}
-                  className={`clickableRow${selectionMode && selectedRows.has(index) ? " selectedRow" : ""}`}
+                  className={cn(
+                    "cursor-pointer transition-colors",
+                    selectionMode && selectedRows.has(index)
+                      ? "[&_td]:bg-primary/10"
+                      : "hover:[&_td]:bg-muted",
+                  )}
                   onClick={() =>
                     selectionMode
                       ? toggleRow(index)
@@ -414,21 +428,25 @@ export function ResultPanel({
                 >
                   {canRowActions && selectionMode && (
                     <td
-                      className="rowCheckboxCell"
+                      className="w-8 p-0 text-center"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <label className="rowCheckboxLabel">
-                        <input
-                          type="checkbox"
+                      <label className="flex h-full w-full cursor-pointer items-center justify-center p-1.5">
+                        <Checkbox
                           checked={selectedRows.has(index)}
-                          onChange={() => toggleRow(index)}
+                          onCheckedChange={() => toggleRow(index)}
                           aria-label={`Select row ${index + 1}`}
                         />
                       </label>
                     </td>
                   )}
                   {result.columns.map((column) => (
-                    <td key={column}>{formatCellValue(row[column])}</td>
+                    <td
+                      key={column}
+                      className="max-w-[420px] overflow-hidden border-b border-r border-border font-mono text-foreground/90 whitespace-nowrap text-ellipsis"
+                    >
+                      {formatCellValue(row[column])}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -436,7 +454,7 @@ export function ResultPanel({
           </table>
         </div>
       ) : (
-        <p className="empty">
+        <p className="p-4 text-sm text-muted-foreground">
           {result.message || `${result.rowsAffected || 0} rows affected`}
         </p>
       )}
@@ -463,16 +481,23 @@ export function TableInspector({ detail, onToast }) {
     }
   };
 
+  const miniPanel = "max-h-[260px] overflow-auto rounded-lg border border-border bg-card p-3";
+
   return (
-    <section className="inspector">
-      <div className="panel mini">
-        <h2>Columns</h2>
-        <div className="columns">
+    <section className="grid grid-cols-[1.1fr_1fr_1.2fr] gap-3">
+      <div className={miniPanel}>
+        <h2 className="mb-2.5 text-sm font-semibold text-foreground">Columns</h2>
+        <div className="grid gap-2">
           {detail.columns.map((column) => (
-            <div key={column.name}>
-              <strong>{column.name}</strong>
-              <span>{column.type}</span>
-              <small>
+            <div
+              key={column.name}
+              className="grid gap-0.5 border-b border-border pb-2 last:border-b-0"
+            >
+              <strong className="text-[13px] font-semibold">{column.name}</strong>
+              <span className="font-mono text-xs text-foreground/80">
+                {column.type}
+              </span>
+              <small className="text-xs text-muted-foreground">
                 {column.nullable ? "nullable" : "not null"}{" "}
                 {column.default ? `· ${column.default}` : ""}
               </small>
@@ -480,32 +505,40 @@ export function TableInspector({ detail, onToast }) {
           ))}
         </div>
       </div>
-      <div className="panel mini">
-        <h2>Indexes</h2>
-        <div className="indexes">
+      <div className={miniPanel}>
+        <h2 className="mb-2.5 text-sm font-semibold text-foreground">Indexes</h2>
+        <div className="grid gap-2">
           {detail.indexes.map((index) => (
-            <div key={index.name}>
-              <strong>{index.name}</strong>
-              <span>
+            <div
+              key={index.name}
+              className="grid gap-0.5 border-b border-border pb-2 last:border-b-0"
+            >
+              <strong className="text-[13px] font-semibold">{index.name}</strong>
+              <span className="font-mono text-xs text-foreground/80">
                 {index.unique ? "unique" : "index"} {index.columns}
               </span>
-              <small>{index.sql}</small>
+              <small className="truncate font-mono text-xs text-muted-foreground">
+                {index.sql}
+              </small>
             </div>
           ))}
         </div>
       </div>
-      <div className="panel mini ddl">
-        <div className="ddlHead">
-          <h2>Create Table</h2>
-          <button
-            className="iconButton"
+      <div className={miniPanel}>
+        <div className="mb-2.5 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Create Table</h2>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             title="Copy create table SQL"
             onClick={copyCreateSql}
           >
-            <Copy size={15} />
-          </button>
+            <Copy />
+          </Button>
         </div>
-        <pre>{detail.createSql}</pre>
+        <pre className="m-0 font-mono text-xs leading-relaxed text-primary/90 whitespace-pre-wrap">
+          {detail.createSql}
+        </pre>
       </div>
     </section>
   );
@@ -553,10 +586,10 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
 
   const formatValue = (val) => {
     if (val === null || val === undefined)
-      return <span className="nullValue">null</span>;
+      return <span className="italic text-muted-foreground">null</span>;
     if (typeof val === "string" && isJson(val)) {
       return (
-        <pre className="jsonValue">
+        <pre className="m-0 rounded-md border border-border bg-background p-2.5 font-mono text-[13px] text-foreground">
           {JSON.stringify(JSON.parse(val), null, 2)}
         </pre>
       );
@@ -572,7 +605,6 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
         return v;
       }
     }
-    // Convert numeric strings back to numbers for prettier JSON if they strictly match
     if (typeof v === "string" && !isNaN(Number(v)) && v.trim() !== "") {
       return Number(v);
     }
@@ -591,60 +623,52 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
   };
 
   return (
-    <div className="modalBackdrop" onMouseDown={onClose}>
-      <div
-        className="modalPanel rowModal"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="modalHead">
-          <h2>{title}</h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="rowDetail flex max-h-[calc(100vh-3.5rem)] w-[min(75vw,calc(100vw-3.5rem))] max-w-full sm:max-w-none flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="min-h-[48px] flex-row items-center gap-3 border-b border-border p-[10px_12px]">
+          <DialogTitle className="text-sm">{title}</DialogTitle>
           {!isExplain && (
-            <div className="viewTabs" style={{ margin: "0 auto 0 16px" }}>
-              <button
-                className={viewMode === "list" ? "active" : ""}
-                onClick={() => setViewMode("list")}
-              >
-                List
-              </button>
-              <button
-                className={viewMode === "json" ? "active" : ""}
-                onClick={() => setViewMode("json")}
-              >
-                JSON
-              </button>
-            </div>
+            <Tabs
+              value={viewMode}
+              onValueChange={(v) => setViewMode(v)}
+              className="mx-auto"
+            >
+              <TabsList>
+                <TabsTrigger value="list">List</TabsTrigger>
+                <TabsTrigger value="json">JSON</TabsTrigger>
+              </TabsList>
+            </Tabs>
           )}
-          <button className="iconButton" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
-        <div className="rowDetailToolbar">
-          <label className="rowFieldSearch">
-            <Search size={15} />
+        </DialogHeader>
+        <div className="flex items-center gap-3 border-b border-border px-3 py-2">
+          <div className="flex w-[min(360px,100%)] items-center gap-2 rounded-md border border-border bg-background px-2.5">
+            <Search className="size-3.5 flex-none text-muted-foreground" />
             <input
               ref={searchInputRef}
+              className="h-8 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none placeholder:text-muted-foreground"
               value={fieldSearch}
               onChange={(event) => setFieldSearch(event.target.value)}
               placeholder="Search fields..."
               aria-label="Search fields"
             />
-          </label>
-          <span>
+          </div>
+          <span className="text-xs text-muted-foreground">
             {filteredEntries.length} of {Object.keys(row).length} fields
           </span>
         </div>
-        <div className="modalBody rowDetail">
+        <div className="min-h-[220px] overflow-auto p-3.5">
           {viewMode === "json" ? (
-            <div style={{ position: "relative" }}>
-              <button
-                className="iconButton small"
-                style={{ position: "absolute", top: 8, right: 8 }}
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="absolute top-2 right-2 z-10"
                 title="Copy JSON"
                 onClick={() => navigator.clipboard.writeText(getJsonRow())}
               >
-                <Copy size={14} />
-              </button>
-              <pre className="jsonValue jsonValueLines" style={{ margin: 0 }}>
+                <Copy />
+              </Button>
+              <pre className="m-0 rounded-md border border-border bg-background p-2.5 font-mono text-[13px] leading-relaxed text-foreground">
                 <div>{"{"}</div>
                 {filteredEntries.map(([key, value], idx) => {
                   const formatted = JSON.stringify(
@@ -655,14 +679,19 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
                   const indented = formatted.split("\n").join("\n  ");
                   const comma = idx < filteredEntries.length - 1 ? "," : "";
                   return (
-                    <div key={key} className="jsonFieldLine">
-                      <span>
+                    <div
+                      key={key}
+                      className="flex items-start justify-between gap-2 hover:[&_.json-line-copy]:opacity-100"
+                    >
+                      <span className="min-w-0 flex-1 whitespace-pre-wrap break-words">
                         {"  "}
                         {JSON.stringify(key)}: {indented}
                         {comma}
                       </span>
-                      <button
-                        className="iconButton small jsonLineCopy"
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="json-line-copy flex-none p-0.5 opacity-0 transition-opacity text-muted-foreground"
                         title="Copy key/value"
                         onClick={() =>
                           navigator.clipboard.writeText(
@@ -670,8 +699,8 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
                           )
                         }
                       >
-                        <Copy size={12} />
-                      </button>
+                        <Copy className="size-3" />
+                      </Button>
                     </div>
                   );
                 })}
@@ -679,31 +708,42 @@ function RowDetailModal({ title, row, isExplain, onClose }) {
               </pre>
             </div>
           ) : (
-            <div className="rowFields">
+            <div className="grid min-w-0 gap-4">
               {filteredEntries.map(([key, value]) => (
-                <div key={key} className="rowField">
-                  <div className="rowFieldHeader">
-                    <strong>{key}</strong>
-                    <button
-                      className="iconButton small"
+                <div
+                  key={key}
+                  className="group grid min-w-0 gap-1.5 border-b border-border pb-3 last:border-b-0"
+                >
+                  <div className="flex items-center gap-2">
+                    <strong className="text-[13px] font-semibold text-muted-foreground">
+                      {key}
+                    </strong>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-6 w-6 p-0.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
                       title="Copy value"
                       onClick={() =>
                         navigator.clipboard.writeText(String(value || ""))
                       }
                     >
-                      <Copy size={12} />
-                    </button>
+                      <Copy className="size-3" />
+                    </Button>
                   </div>
-                  <div className="rowFieldValue">{formatValue(value)}</div>
+                  <div className="min-w-0 font-mono text-[13px] whitespace-pre-wrap break-words text-foreground">
+                    {formatValue(value)}
+                  </div>
                 </div>
               ))}
               {!filteredEntries.length && (
-                <p className="empty">No fields match your search.</p>
+                <p className="p-4 text-sm text-muted-foreground">
+                  No fields match your search.
+                </p>
               )}
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

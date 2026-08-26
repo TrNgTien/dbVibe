@@ -203,7 +203,10 @@ export function createBackendCompletionSource(detail) {
   };
 }
 
-export function createSqlCompletionSource(detail, options = {}) {
+export function createSqlCompletionSource(
+  detail,
+  options: { uppercaseKeywords?: boolean } = {},
+) {
   const uppercaseKeywords = options.uppercaseKeywords ?? false;
 
   return (context) => {

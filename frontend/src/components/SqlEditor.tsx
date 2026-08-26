@@ -215,7 +215,12 @@ function createSearchPanel(view) {
       return;
     }
 
-    const matches = Array.from(query.getCursor(view.state));
+    const matches = Array.from(
+      query.getCursor(view.state) as unknown as Iterable<{
+        from: number;
+        to: number;
+      }>,
+    );
     const selection = view.state.selection.main;
     const currentIndex = matches.findIndex(
       (match) => match.from === selection.from && match.to === selection.to,
@@ -272,7 +277,7 @@ export function SqlEditor({
   detail,
   editorRef,
   fontSize = 14,
-  settings = {},
+  settings = {} as Record<string, any>,
 }) {
   const containerRef = useRef(null);
   const viewRef = useRef(null);

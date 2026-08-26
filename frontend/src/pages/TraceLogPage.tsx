@@ -1,6 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Download, FileText, RefreshCw, Search, X } from "lucide-react";
 import { api, driverLabel } from "../utils/api";
+import { Page, Panel, PanelHeader } from "../components/shared/layout";
+import { CodeBlock } from "../components/shared/CodeBlock";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 function parseTraceEvents(text) {
   const source = String(text || "");
@@ -97,6 +110,12 @@ function traceStats(events) {
   );
 }
 
+const traceActionStyles = {
+  insert: "text-emerald-400 border-emerald-500/40",
+  update: "text-yellow-400 border-yellow-500/40",
+  delete: "text-red-400 border-red-500/40",
+};
+
 export function TraceLogPage({ connection, onExport }) {
   const [traceText, setTraceText] = useState("");
   const [search, setSearch] = useState("");
@@ -181,95 +200,106 @@ export function TraceLogPage({ connection, onExport }) {
   }
 
   return (
-    <section className="tracePage">
-      <section className="panel traceInputPanel">
-        <div className="panelHead">
-          <div>
-            <h2>Trace Log</h2>
-            <small>
-              {driverLabel(connection?.driver)} · {binlogHost}:{binlogPort}
-            </small>
-          </div>
-          <div className="rowActions">
-            {connection?.driver === "mysql" && (
-              <>
-                <select
-                  value={selectedBinlog}
-                  onChange={(event) => setSelectedBinlog(event.target.value)}
-                  disabled={binlogLoading || !binlogs.length}
-                  title="MySQL binary log"
-                >
-                  <option value="">
-                    {binlogs.length ? "Select binlog" : "No binlogs loaded"}
-                  </option>
-                  {binlogs.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
+    <Page className="grid grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)] gap-3">
+      <Panel className="min-h-0">
+        <PanelHeader
+          title="Trace Log"
+          description={`${driverLabel(connection?.driver)} · ${binlogHost}:${binlogPort}`}
+          className="items-start"
+          actions={
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {connection?.driver === "mysql" && (
+                <>
+                  <NativeSelect
+                    size="sm"
+                    value={selectedBinlog}
+                    onChange={(event) => setSelectedBinlog(event.target.value)}
+                    disabled={binlogLoading || !binlogs.length}
+                    title="MySQL binary log"
+                  >
+                    <option value="">
+                      {binlogs.length ? "Select binlog" : "No binlogs loaded"}
                     </option>
-                  ))}
-                </select>
-                <button
-                  title="Refresh binlogs"
-                  onClick={refreshBinlogs}
-                  disabled={binlogLoading}
-                >
-                  <RefreshCw size={15} /> Binlogs
-                </button>
-                <button
-                  onClick={loadBinlog}
-                  disabled={binlogLoading || !selectedBinlog}
-                >
-                  <FileText size={15} /> Load
-                </button>
-                <button
-                  onClick={exportBinlog}
-                  disabled={!traceText || !selectedBinlog}
-                >
-                  <Download size={15} /> Export
-                </button>
-              </>
-            )}
-            <label className="fileButton">
-              <FileText size={15} />
-              Load log
-              <input
-                type="file"
-                accept=".log,.sql,.txt"
-                onChange={loadTraceFile}
-              />
-            </label>
-          </div>
-        </div>
-        {binlogError && <div className="error traceError">{binlogError}</div>}
-        <textarea
-          className="traceText"
+                    {binlogs.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title="Refresh binlogs"
+                    onClick={refreshBinlogs}
+                    disabled={binlogLoading}
+                  >
+                    <RefreshCw data-icon="inline-start" /> Binlogs
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadBinlog}
+                    disabled={binlogLoading || !selectedBinlog}
+                  >
+                    <FileText data-icon="inline-start" /> Load
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={exportBinlog}
+                    disabled={!traceText || !selectedBinlog}
+                  >
+                    <Download data-icon="inline-start" /> Export
+                  </Button>
+                </>
+              )}
+              <Button asChild variant="outline" size="sm" className="min-h-8">
+                <label className="cursor-pointer">
+                  <FileText data-icon="inline-start" />
+                  Load log
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".log,.sql,.txt"
+                    onChange={loadTraceFile}
+                  />
+                </label>
+              </Button>
+            </div>
+          }
+        />
+        {binlogError && (
+          <Alert variant="destructive" className="rounded-none border-x-0 border-t-0">
+            <AlertDescription>{binlogError}</AlertDescription>
+          </Alert>
+        )}
+        <Textarea
+          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-background font-mono text-xs shadow-none focus-visible:ring-0"
           value={traceText}
           onChange={(event) => setTraceText(event.target.value)}
           spellCheck={false}
           placeholder="Paste mysqlbinlog output or SQL audit text here"
         />
-      </section>
+      </Panel>
 
-      <section className="panel traceEventsPanel">
-        <div className="panelHead">
-          <div>
-            <h2>Mutation Events</h2>
-            <small>
-              {stats.insert} insert · {stats.update} update · {stats.delete} delete
-            </small>
-          </div>
-          <span>{filteredEvents.length} events</span>
-        </div>
-        <div className="traceToolbar">
-          <label className="traceSearch">
-            <Search size={15} />
+      <Panel className="min-h-0">
+        <PanelHeader
+          title="Mutation Events"
+          description={`${stats.insert} insert · ${stats.update} update · ${stats.delete} delete`}
+          actions={<span className="text-xs text-muted-foreground">{filteredEvents.length} events</span>}
+        />
+        <div className="grid grid-cols-[minmax(0,1fr)_150px] gap-2 border-b border-border p-2.5">
+          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5">
+            <Search className="size-4 flex-none text-muted-foreground" />
             <input
+              className="h-8 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none placeholder:text-muted-foreground"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Filter table or SQL"
             />
-          </label>
-          <select
+          </div>
+          <NativeSelect
+            size="sm"
             value={actionFilter}
             onChange={(event) => setActionFilter(event.target.value)}
           >
@@ -277,33 +307,51 @@ export function TraceLogPage({ connection, onExport }) {
             <option value="insert">INSERT</option>
             <option value="update">UPDATE</option>
             <option value="delete">DELETE</option>
-          </select>
+          </NativeSelect>
         </div>
-        <div className="traceEvents">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-2.5">
           {filteredEvents.map((event) => (
             <button
               key={event.id}
-              className="traceEvent"
+              type="button"
+              className={cn(
+                "grid w-full min-h-[68px] grid-cols-[74px_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border border-border bg-background p-2.5 text-left transition-colors",
+                "hover:border-primary hover:bg-muted/50",
+              )}
               onClick={() => setSelectedEvent(event)}
             >
-              <span className={`traceAction ${event.action.toLowerCase()}`}>
+              <span
+                className={cn(
+                  "w-fit rounded-full border px-2 py-1 text-[11px] font-bold",
+                  traceActionStyles[event.action.toLowerCase()] ||
+                    "border-border text-muted-foreground",
+                )}
+              >
                 {event.action}
               </span>
-              <span className="traceEventBody">
-                <strong>{event.table}</strong>
-                <small>{event.summary}</small>
+              <span className="grid min-w-0 gap-1.5">
+                <strong className="truncate text-sm font-semibold">
+                  {event.table}
+                </strong>
+                <small className="truncate font-mono text-xs text-muted-foreground">
+                  {event.summary}
+                </small>
               </span>
-              <span className="traceTime">{event.timestampLabel}</span>
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {event.timestampLabel}
+              </span>
             </button>
           ))}
           {!filteredEvents.length && (
-            <div className="traceEmpty">
-              <FileText size={24} />
-              <span>No INSERT, UPDATE, or DELETE statements found</span>
+            <div className="flex min-h-56 flex-1 flex-col items-center justify-center gap-2.5 text-muted-foreground">
+              <FileText className="size-6" />
+              <span className="text-sm">
+                No INSERT, UPDATE, or DELETE statements found
+              </span>
             </div>
           )}
         </div>
-      </section>
+      </Panel>
 
       {selectedEvent && (
         <TraceEventModal
@@ -311,52 +359,42 @@ export function TraceLogPage({ connection, onExport }) {
           onClose={() => setSelectedEvent(null)}
         />
       )}
-    </section>
+    </Page>
   );
 }
 
 function TraceEventModal({ event, onClose }) {
   return (
-    <div className="modalBackdrop" onMouseDown={onClose}>
-      <section className="modalPanel traceModal" onMouseDown={(mouseEvent) => mouseEvent.stopPropagation()}>
-        <div className="modalHead">
-          <div>
-            <h2>
-              {event.action} · {event.table}
-            </h2>
-            <small>{event.timestampLabel}</small>
-          </div>
-          <button title="Close" onClick={onClose}>
-            <X size={16} />
-          </button>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[min(760px,calc(100vh-3rem))] w-[min(1120px,calc(100vw-3.5rem))] max-w-full overflow-y-auto">
+        <DialogHeader className="min-h-[48px] border-b border-border p-[10px_12px]">
+          <DialogTitle>
+            {event.action} · {event.table}
+          </DialogTitle>
+          <p className="text-xs text-muted-foreground">{event.timestampLabel}</p>
+        </DialogHeader>
+        <div className="grid grid-cols-3 gap-2.5">
+          {[
+            ["Action", event.action],
+            ["Table", event.table],
+            ["Time", event.timestampLabel || "Unknown"],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="grid gap-1.5 rounded-lg border border-border bg-background p-2.5"
+            >
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <strong className="truncate text-sm font-semibold">{value}</strong>
+            </div>
+          ))}
         </div>
-        <div className="traceEventDetail">
-          <div className="traceSummaryGrid">
-            <div>
-              <span>Action</span>
-              <strong>{event.action}</strong>
-            </div>
-            <div>
-              <span>Table</span>
-              <strong>{event.table}</strong>
-            </div>
-            <div>
-              <span>Time</span>
-              <strong>{event.timestampLabel || "Unknown"}</strong>
-            </div>
-          </div>
-          <div className="traceCodeBlock">
-            <div className="traceCodeLabel">SQL Statement</div>
-            <pre>{event.sql}</pre>
-          </div>
-          {event.context && (
-            <div className="traceCodeBlock">
-              <div className="traceCodeLabel">Context / Metadata</div>
-              <pre className="traceContext">{event.context}</pre>
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
+        <CodeBlock label="SQL Statement">{event.sql}</CodeBlock>
+        {event.context && (
+          <CodeBlock label="Context / Metadata" className="max-h-64 overflow-y-auto">
+            {event.context}
+          </CodeBlock>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -277,7 +277,20 @@ export function aiProviderRequiresKey(provider) {
  * Streams a chat completion. messages: [{role, content}].
  * Callbacks: onChunk(delta), onDone(), onError(err), onStart().
  */
-export async function streamChatAI(messages, { onChunk, onDone, onError, onStart } = {}) {
+export async function streamChatAI(
+  messages,
+  {
+    onChunk,
+    onDone,
+    onError,
+    onStart,
+  }: {
+    onChunk?: (chunk: string) => void;
+    onDone?: () => void;
+    onError?: (err: Error) => void;
+    onStart?: () => void;
+  } = {},
+) {
   const app = (window as any)?.go?.main?.App;
   const runtime = (window as any)?.runtime;
   if (!app?.ChatAIStream) return streamDemoAI(messages, { onChunk, onDone });

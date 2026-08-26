@@ -6,9 +6,39 @@ import {
   Cpu,
   MemoryStick,
   RefreshCw,
-  X,
 } from "lucide-react";
 import { api, driverLabel, formatBytes, formatNumber } from "../utils/api";
+import { Page, Panel, PanelHeader } from "../components/shared/layout";
+import { CodeBlock } from "../components/shared/CodeBlock";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 function formatDuration(value) {
   const ms = Number(value || 0);
@@ -59,7 +89,7 @@ function summaryCards(summary, driver) {
   ];
 }
 
-const REFRESH_INTERVALS = [
+const REFRESH_INTERVALS: [number, string][] = [
   [0, "Off"],
   [-1, "Auto"],
   [5, "5s"],
@@ -92,7 +122,6 @@ export function QueryInsightsPage({ connection, database }) {
   const [refreshMenuOpen, setRefreshMenuOpen] = useState(false);
   const previousCPURef = useRef(null);
   const loadingRef = useRef(false);
-  const refreshMenuRef = useRef(null);
 
   const cards = useMemo(
     () => summaryCards(insights?.summary, connection?.driver),
@@ -182,138 +211,134 @@ export function QueryInsightsPage({ connection, database }) {
     return () => window.clearInterval(timer);
   }, [nextRefreshAt, refresh, refreshIntervalSeconds]);
 
-  useEffect(() => {
-    if (!refreshMenuOpen) return;
-    const close = (event) => {
-      if (
-        event.type === "keydown" &&
-        event.key !== "Escape"
-      ) {
-        return;
-      }
-      if (
-        event.type === "mousedown" &&
-        refreshMenuRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setRefreshMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [refreshMenuOpen]);
-
   const refreshCountdown = nextRefreshAt
     ? Math.max(0, Math.ceil((nextRefreshAt - clockNow) / 1000))
     : null;
 
+  const label =
+    connection?.driver === "redis"
+      ? "Command"
+      : connection?.driver === "mongodb"
+        ? "Query shape"
+        : "Query";
+
   return (
-    <section className="insightsPage">
-      <section className="panel insightsPanel">
-        <div className="panelHead">
-          <div>
-            <h2>
-              {connection?.driver === "redis"
-                ? "Redis Performance Trace"
-                : "Query Insights"}
-            </h2>
-            <small>
-              {driverLabel(connection?.driver)} · {database || connection?.database}
-            </small>
-          </div>
-          <div className="insightsRefreshControls">
-            <div className="insightsRefreshSplit" ref={refreshMenuRef}>
-              <button
-                className="insightsRefreshButton"
+    <Page>
+      <Panel>
+        <PanelHeader
+          title={
+            connection?.driver === "redis"
+              ? "Redis Performance Trace"
+              : "Query Insights"
+          }
+          description={`${driverLabel(connection?.driver)} · ${database || connection?.database}`}
+          actions={
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="min-w-[102px]"
                 onClick={refresh}
                 disabled={loading}
               >
-                <RefreshCw size={15} className={loading ? "spinning" : ""} />
+                <RefreshCw
+                  className={loading ? "animate-spin" : ""}
+                  data-icon="inline-start"
+                />
                 {loading
                   ? "Loading"
                   : refreshCountdown !== null
                     ? `Refresh in ${refreshCountdown}s`
                     : "Refresh"}
-              </button>
-              <button
-                className="insightsRefreshMenuButton"
-                title="Auto refresh interval"
-                aria-label="Auto refresh interval"
-                aria-expanded={refreshMenuOpen}
-                onClick={() => setRefreshMenuOpen((open) => !open)}
+              </Button>
+              <DropdownMenu
+                open={refreshMenuOpen}
+                onOpenChange={setRefreshMenuOpen}
               >
-                {refreshMenuOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              </button>
-              {refreshMenuOpen && (
-                <div className="insightsRefreshMenu">
-                  {REFRESH_INTERVALS.map(([seconds, label]) => (
-                    <button
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    title="Auto refresh interval"
+                    aria-label="Auto refresh interval"
+                  >
+                    {refreshMenuOpen ? <ChevronUp /> : <ChevronDown />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {REFRESH_INTERVALS.map(([seconds, intervalLabel]) => (
+                    <DropdownMenuItem
                       key={seconds}
-                      className={refreshIntervalSeconds === seconds ? "active" : ""}
-                      onClick={() => {
-                        setRefreshIntervalSeconds(seconds);
-                        setRefreshMenuOpen(false);
-                      }}
+                      onSelect={() => setRefreshIntervalSeconds(seconds)}
+                      className={cn(
+                        refreshIntervalSeconds === seconds && "bg-accent",
+                      )}
                     >
-                      {label}
-                    </button>
+                      {intervalLabel}
+                    </DropdownMenuItem>
                   ))}
-                </div>
-              )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </div>
-        </div>
+          }
+        />
 
-        {error && <div className="error insightsError">{error}</div>}
+        {error && (
+          <Alert
+            variant="destructive"
+            className="rounded-none border-x-0 border-t-0"
+          >
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
         {insights && <ResourceTelemetry resources={insights.resources} />}
 
         {insights && !insights.available && (
-          <div className="insightsEmpty">
-            <Activity size={28} />
-            <strong>Query statistics are not enabled</strong>
-            <span>{insights.message}</span>
+          <div className="flex min-h-56 flex-1 flex-col items-center justify-center gap-2.5 p-6 text-center text-muted-foreground">
+            <Activity className="size-7" />
+            <strong className="text-sm font-semibold text-foreground">
+              Query statistics are not enabled
+            </strong>
+            <span className="max-w-[560px] text-sm">{insights.message}</span>
           </div>
         )}
 
         {insights?.available && (
           <>
-            <div className="insightsSummary">
-              {cards.map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
+            <div className="grid grid-cols-5 gap-2.5 border-b border-border p-3">
+              {cards.map(([cardLabel, value]) => (
+                <div
+                  key={cardLabel}
+                  className="grid gap-1.5 rounded-lg border border-border bg-background p-3"
+                >
+                  <span className="text-xs text-muted-foreground">{cardLabel}</span>
+                  <strong className="text-xl font-semibold tabular-nums">
+                    {value}
+                  </strong>
                 </div>
               ))}
             </div>
 
             {insights.message && !insights.queries?.length ? (
-              <div className="insightsEmpty">
-                <Activity size={28} />
-                <strong>No workload data yet</strong>
-                <span>{insights.message}</span>
+              <div className="flex min-h-56 flex-1 flex-col items-center justify-center gap-2.5 p-6 text-center text-muted-foreground">
+                <Activity className="size-7" />
+                <strong className="text-sm font-semibold text-foreground">
+                  No workload data yet
+                </strong>
+                <span className="max-w-[560px] text-sm">{insights.message}</span>
               </div>
             ) : (
-              <div className="insightsTableScroll">
-                <table className="insightsTable">
-                  <thead>
-                    <tr>
-                      <th>Impact</th>
-                      <th>
-                        {connection?.driver === "redis"
-                          ? "Command"
-                          : connection?.driver === "mongodb"
-                            ? "Query shape"
-                            : "Query"}
-                      </th>
-                      <th>Calls</th>
-                      <th>Total time</th>
-                      <th>Average</th>
-                      <th>
+              <div className="min-h-0 flex-1 overflow-auto">
+                <Table className="text-xs [&_th]:h-auto [&_th]:px-3 [&_th]:py-2.5 [&_td]:px-3 [&_td]:py-2.5">
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[110px]">Impact</TableHead>
+                      <TableHead className="text-left">{label}</TableHead>
+                      <TableHead className="text-right">Calls</TableHead>
+                      <TableHead className="text-right">Total time</TableHead>
+                      <TableHead className="text-right">Average</TableHead>
+                      <TableHead className="text-right">
                         {connection?.driver === "redis"
                           ? "Failed"
                           : connection?.driver === "mongodb"
@@ -321,8 +346,8 @@ export function QueryInsightsPage({ connection, database }) {
                           : connection?.driver === "mysql"
                             ? "Examined"
                             : "Rows"}
-                      </th>
-                      <th>
+                      </TableHead>
+                      <TableHead className="text-right">
                         {connection?.driver === "redis"
                           ? "Rejected"
                           : connection?.driver === "mongodb"
@@ -330,14 +355,13 @@ export function QueryInsightsPage({ connection, database }) {
                           : connection?.driver === "mysql"
                             ? "Disk temp"
                             : "Cache hit"}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {(insights.queries || []).map((item, index) => (
-                      <tr
+                      <TableRow
                         key={`${item.query}-${index}`}
-                        className="insightRow"
                         tabIndex={0}
                         onClick={() => setSelectedInsight(item)}
                         onKeyDown={(event) => {
@@ -347,23 +371,43 @@ export function QueryInsightsPage({ connection, database }) {
                           }
                         }}
                         aria-label={`Open performance details for ${item.query}`}
+                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
-                        <td className="impactCell">
-                          <strong>{formatPercent(item.impactPercent)}</strong>
-                          <span>
-                            <i style={{ width: `${Math.max(2, item.impactPercent)}%` }} />
-                          </span>
-                        </td>
-                        <td className="insightQuery">
-                          <span className="insightQueryText">{item.query}</span>
-                          <span className="insightQueryTooltip" role="tooltip">
-                            {item.query}
-                          </span>
-                        </td>
-                        <td>{formatNumber(item.calls)}</td>
-                        <td>{formatDuration(item.totalTimeMs)}</td>
-                        <td>{formatDuration(item.averageTimeMs)}</td>
-                        <td>
+                        <TableCell>
+                          <strong className="block text-sm font-semibold text-primary">
+                            {formatPercent(item.impactPercent)}
+                          </strong>
+                          <Progress
+                            value={Math.max(2, item.impactPercent)}
+                            className="mt-1 h-1"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block max-w-[560px] truncate font-mono text-muted-foreground">
+                                {item.query}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="bottom"
+                              align="start"
+                              className="max-h-44 max-w-[640px] overflow-auto whitespace-pre-wrap break-words"
+                            >
+                              <p className="font-mono text-xs">{item.query}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatNumber(item.calls)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatDuration(item.totalTimeMs)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatDuration(item.averageTimeMs)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
                           {formatNumber(
                             connection?.driver === "redis"
                               ? item.failedCalls
@@ -373,8 +417,8 @@ export function QueryInsightsPage({ connection, database }) {
                                 ? item.rowsExamined
                                 : item.rows,
                           )}
-                        </td>
-                        <td>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
                           {connection?.driver === "redis"
                             ? formatNumber(item.rejectedCalls)
                             : connection?.driver === "mongodb"
@@ -382,16 +426,16 @@ export function QueryInsightsPage({ connection, database }) {
                             : connection?.driver === "mysql"
                               ? formatNumber(item.tempDiskTables)
                               : formatPercent(item.cacheHitRatio)}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </>
         )}
-      </section>
+      </Panel>
       {selectedInsight && (
         <QueryInsightModal
           item={selectedInsight}
@@ -401,7 +445,7 @@ export function QueryInsightsPage({ connection, database }) {
           onClose={() => setSelectedInsight(null)}
         />
       )}
-    </section>
+    </Page>
   );
 }
 
@@ -422,32 +466,34 @@ function ResourceTelemetry({ resources }) {
         : "Metrics unavailable";
 
   return (
-    <section className="resourceTelemetry">
-      <div className="resourceTelemetryHead">
-        <strong>Server Resources</strong>
-        <span>{sourceLabel}</span>
+    <section className="grid gap-2.5 border-b border-border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <strong className="text-xs font-semibold uppercase text-foreground">
+          Server Resources
+        </strong>
+        <span className="text-[11px] text-muted-foreground">{sourceLabel}</span>
       </div>
-      <div className="resourceCards">
-        <div className="resourceCard">
-          <div className="resourceCardHead">
-            <span><Cpu size={15} /> CPU %</span>
-            <strong>
+      <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Cpu className="size-3.5" /> CPU %
+            </span>
+            <strong className="text-sm font-semibold tabular-nums">
               {Number.isFinite(cpuUsage) ? formatPercent(cpuUsage) : "Unavailable"}
             </strong>
           </div>
           {Number.isFinite(cpuUsage) ? (
             <>
-              <div className="resourceProgress cpu">
-                <i style={{ width: `${Math.min(100, cpuUsage)}%` }} />
-              </div>
-              <small>
+              <Progress value={Math.min(100, cpuUsage)} className="h-1.5" />
+              <small className="text-[11px] text-muted-foreground">
                 {resources?.source === "docker"
                   ? "Current Docker container CPU usage"
                   : "CPU consumed by the server between the last two refreshes"}
               </small>
             </>
           ) : (
-            <small>
+            <small className="text-[11px] text-muted-foreground">
               {resources?.cpuAvailable
                 ? "Refresh again to calculate current CPU usage."
                 : resources?.cpuMessage || "Current CPU usage is unavailable."}
@@ -455,10 +501,12 @@ function ResourceTelemetry({ resources }) {
           )}
         </div>
 
-        <div className="resourceCard">
-          <div className="resourceCardHead">
-            <span><MemoryStick size={15} /> MEM USAGE / LIMIT</span>
-            <strong>
+        <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MemoryStick className="size-3.5" /> MEM USAGE / LIMIT
+            </span>
+            <strong className="text-sm font-semibold tabular-nums">
               {resources?.memoryAvailable
                 ? memoryLimit > 0
                   ? `${formatBytes(memoryUsed) || "0B"} / ${formatBytes(memoryLimit)}`
@@ -466,7 +514,7 @@ function ResourceTelemetry({ resources }) {
                 : "Unavailable"}
             </strong>
           </div>
-          <small>
+          <small className="text-[11px] text-muted-foreground">
             {resources?.memoryAvailable
               ? resources?.memoryLimitLabel || "Memory limit"
               : `Current memory usage is not exposed. Configured ${
@@ -475,10 +523,12 @@ function ResourceTelemetry({ resources }) {
           </small>
         </div>
 
-        <div className="resourceCard">
-          <div className="resourceCardHead">
-            <span><MemoryStick size={15} /> MEM %</span>
-            <strong>
+        <div className="grid gap-2 rounded-lg border border-border bg-background p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <MemoryStick className="size-3.5" /> MEM %
+            </span>
+            <strong className="text-sm font-semibold tabular-nums">
               {resources?.memoryAvailable && memoryLimit > 0
                 ? formatPercent(memoryPercent)
                 : "Unavailable"}
@@ -486,13 +536,13 @@ function ResourceTelemetry({ resources }) {
           </div>
           {resources?.memoryAvailable && memoryLimit > 0 ? (
             <>
-              <div className="resourceProgress">
-                <i style={{ width: `${Math.min(100, memoryPercent)}%` }} />
-              </div>
-              <small>{resources?.memoryLimitLabel || "Memory"} utilization</small>
+              <Progress value={Math.min(100, memoryPercent)} className="h-1.5" />
+              <small className="text-[11px] text-muted-foreground">
+                {resources?.memoryLimitLabel || "Memory"} utilization
+              </small>
             </>
           ) : (
-            <small>
+            <small className="text-[11px] text-muted-foreground">
               A comparable memory usage and limit are required.
             </small>
           )}
@@ -511,41 +561,29 @@ function QueryInsightModal({ item, insights, connection, database, onClose }) {
     ...item,
   };
 
+  const label =
+    connection?.driver === "redis"
+      ? "Command"
+      : connection?.driver === "mongodb"
+        ? "Query shape"
+        : "Query";
+
   return (
-    <div className="modalBackdrop" onMouseDown={onClose}>
-      <section
-        className="modalPanel insightModal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Query performance detail"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="modalHead">
-          <div>
-            <h2>Performance Impact Detail</h2>
-            <small>{formatPercent(item.impactPercent)} of tracked execution time</small>
-          </div>
-          <button title="Close" onClick={onClose}>
-            <X size={16} />
-          </button>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[min(760px,calc(100vh-3rem))] w-[min(820px,calc(100vw-3rem))] max-w-full overflow-y-auto">
+        <DialogHeader className="min-h-[48px] border-b border-border p-[10px_12px]">
+          <DialogTitle>Performance Impact Detail</DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            {formatPercent(item.impactPercent)} of tracked execution time
+          </p>
+        </DialogHeader>
+        <div className="grid gap-2.5">
+          <CodeBlock label={label}>{item.query}</CodeBlock>
+          <CodeBlock label="JSON Data" className="max-h-96 overflow-y-auto">
+            {JSON.stringify(detail, null, 2)}
+          </CodeBlock>
         </div>
-        <div className="insightModalBody">
-          <div className="traceCodeBlock">
-            <div className="traceCodeLabel">
-              {connection?.driver === "redis"
-                ? "Command"
-                : connection?.driver === "mongodb"
-                  ? "Query shape"
-                  : "Query"}
-            </div>
-            <pre>{item.query}</pre>
-          </div>
-          <div className="traceCodeBlock">
-            <div className="traceCodeLabel">JSON Data</div>
-            <pre>{JSON.stringify(detail, null, 2)}</pre>
-          </div>
-        </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

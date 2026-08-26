@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, CornerDownLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function splitBlocks(text) {
   const blocks = [];
@@ -40,9 +41,20 @@ function renderInline(text) {
   while ((match = re.exec(text))) {
     if (match.index > last) nodes.push(text.slice(last, match.index));
     if (match[1]) {
-      nodes.push(<code key={key++}>{match[1].slice(1, -1)}</code>);
+      nodes.push(
+        <code
+          key={key++}
+          className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
+        >
+          {match[1].slice(1, -1)}
+        </code>,
+      );
     } else if (match[2]) {
-      nodes.push(<strong key={key++}>{match[2].slice(2, -2)}</strong>);
+      nodes.push(
+        <strong key={key++} className="font-semibold text-foreground">
+          {match[2].slice(2, -2)}
+        </strong>,
+      );
     } else if (match[3]) {
       nodes.push(<em key={key++}>{match[3].slice(1, -1)}</em>);
     }
@@ -54,13 +66,13 @@ function renderInline(text) {
 
 function TextBlock({ lines }) {
   const paragraphs = [];
-  let list = [];
+  let list = null;
   let para = [];
 
   const flushList = () => {
-    if (list.length) {
+    if (list) {
       paragraphs.push({ type: "list", ordered: list.ordered, items: list.items });
-      list = [];
+      list = null;
     }
   };
   const flushPara = () => {
@@ -80,10 +92,10 @@ function TextBlock({ lines }) {
       paragraphs.push({ type: "heading", level: heading[1].length, content: heading[2] });
       continue;
     }
-    if (bullet || numbered) {
+if (bullet || numbered) {
       flushPara();
       const item = bullet ? bullet[1] : numbered[1];
-      if (!list.items) list = { ordered: !!numbered, items: [] };
+      if (!list) list = { ordered: !!numbered, items: [] };
       list.items.push(item);
       continue;
     }
@@ -99,12 +111,20 @@ function TextBlock({ lines }) {
 
   return paragraphs.map((block, index) => {
     switch (block.type) {
-      case "heading":
-        const Tag = `h${block.level}`;
-        return <Tag key={index}>{renderInline(block.content)}</Tag>;
+      case "heading": {
+        const Tag = `h${block.level}` as "h1" | "h2" | "h3";
+        return (
+          <Tag
+            key={index}
+            className="my-2 text-sm font-bold text-foreground first:mt-0"
+          >
+            {renderInline(block.content)}
+          </Tag>
+        );
+      }
       case "para":
         return (
-          <p key={index}>
+          <p key={index} className="mb-2 last:mb-0">
             {block.lines.map((line, lineIndex) => (
               <span key={lineIndex}>
                 {lineIndex > 0 ? <br /> : null}
@@ -116,7 +136,7 @@ function TextBlock({ lines }) {
       case "list": {
         const ListTag = block.ordered ? "ol" : "ul";
         return (
-          <ListTag key={index}>
+          <ListTag key={index} className="mb-2 list-inside list-disc space-y-0.5 pl-1 last:mb-0">
             {block.items.map((item, itemIndex) => (
               <li key={itemIndex}>{renderInline(item)}</li>
             ))}
@@ -146,22 +166,38 @@ function CodeBlock({ lang, content, onInsert }) {
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="aiCodeBlock">
-      <div className="aiCodeHead">
-        <span>{lang || "sql"}</span>
-        <div>
+    <div className="my-2 overflow-hidden rounded-lg border border-border bg-background">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/50 px-2.5 py-1 text-[11px] text-muted-foreground">
+        <span className="font-mono">{lang || "sql"}</span>
+        <div className="flex gap-1.5">
           {onInsert && (
-            <button onClick={() => onInsert(content)} title="Send to editor">
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              onClick={() => onInsert(content)}
+              title="Send to editor"
+            >
+              <CornerDownLeft data-icon="inline-start" />
               Use in editor
-            </button>
+            </Button>
           )}
-          <button onClick={copy}>
-            {copied ? <Check size={12} /> : <Copy size={12} />}
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={copy}
+          >
+            {copied ? (
+              <Check data-icon="inline-start" />
+            ) : (
+              <Copy data-icon="inline-start" />
+            )}
             {copied ? "Copied" : "Copy"}
-          </button>
+          </Button>
         </div>
       </div>
-      <pre>
+      <pre className="overflow-x-auto p-2.5 font-mono text-xs leading-relaxed text-foreground">
         <code>{content}</code>
       </pre>
     </div>
@@ -171,7 +207,7 @@ function CodeBlock({ lang, content, onInsert }) {
 export function Markdown({ text, onInsert }) {
   const blocks = useMemo(() => splitBlocks(text), [text]);
   return (
-    <div className="markdown">
+    <div className="text-[13px] leading-relaxed text-muted-foreground">
       {blocks.map((block, index) =>
         block.type === "code" ? (
           <CodeBlock key={index} lang={block.lang} content={block.content} onInsert={onInsert} />

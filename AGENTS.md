@@ -1,7 +1,10 @@
 # dbVibe Agent Instructions
 
 ## Stack
-Wails v2 | Go 1.24 | React 19 | Vite | CodeMirror 6 | MySQL/PGX
+Wails v2 | Go 1.24 | React 19 | Vite | Tailwind CSS v4 + shadcn/ui | CodeMirror 6 | MySQL/PGX
+
+## Build Environment
+- **Node 22 required** (Tailwind v4): `.nvmrc` = `22`. Run `source ~/.nvm/nvm.sh && nvm use 22` before any frontend install/build. CI already uses Node 22.
 
 ## Token Optimization Rules
 - **No fluff**: Skip pleasantries, conversational filler, and redundant explanations.
@@ -24,6 +27,7 @@ Wails v2 | Go 1.24 | React 19 | Vite | CodeMirror 6 | MySQL/PGX
 - **CGO**: Avoid unless strictly requiring native Objective-C/Cocoa APIs.
 
 ## Frontend (React)
-- **Editor**: Optimize CodeMirror 6 for large SQL files (lazy load extensions).
-- **Icons**: Use `lucide-react`.
+- **Styling**: shadcn/ui (radix base, nova style) + Tailwind v4. Use semantic tokens (`bg-card`, `text-muted-foreground`) and shadcn components — no raw colors. Components live in `frontend/src/components/ui/` (generated, don't hand-edit). Shared app components: `frontend/src/components/shared/`.
+- **Editor**: CodeMirror 6 internals live in `frontend/src/codemirror.css` (plain CSS — CodeMirror's dynamic DOM can't be Tailwind). Only the `sqlEditor` host is Tailwind.
+- **Icons**: Use `lucide-react` with `data-icon` inside buttons.
 - **State**: Keep state minimal and close to components.

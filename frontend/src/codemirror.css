@@ -1,0 +1,191 @@
+/* CodeMirror 6 internal styles — kept as plain CSS because CodeMirror renders
+ * its own DOM (dynamic classes), which cannot be expressed as Tailwind utilities. */
+
+.sqlEditor {
+  flex: 1;
+  min-height: 0;
+  background: #101318;
+  display: flex;
+  flex-direction: column;
+}
+
+.sqlEditor .cm-editor {
+  flex: 1;
+  min-height: 0;
+  background: #101318;
+  color: #e8edf2;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: var(--editor-font-size, 14px);
+}
+
+.sqlEditor .cm-focused {
+  outline: none;
+}
+
+.sqlEditor .cm-scroller {
+  font-family: inherit;
+  line-height: 1.5;
+  scrollbar-width: none;
+}
+
+.sqlEditor .cm-scroller::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.sqlEditor .cm-gutters {
+  background: #101318;
+  border-right: 1px solid #252b34;
+  color: #6f7a86;
+}
+
+.sqlEditor .cm-activeLine,
+.sqlEditor .cm-activeLineGutter {
+  background: #171d25;
+}
+
+.sqlEditor .cm-selectionBackground,
+.sqlEditor.cm-focused .cm-selectionBackground,
+.sqlEditor .cm-content ::selection {
+  background: #4a6b9c !important;
+}
+
+.sqlEditor .cm-cursor,
+.sqlEditor .cm-dropCursor {
+  border-left-color: #e8edf2 !important;
+}
+
+.sqlEditor .cm-content {
+  padding: 12px 0;
+}
+
+.sqlEditor .cm-line {
+  padding: 0 12px;
+}
+
+.sqlEditor .cm-panels {
+  background: transparent;
+  border: 0;
+}
+
+.sqlEditor .cm-panel.cm-vscodeSearch {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 18px;
+  width: min(520px, calc(100% - 36px));
+  border: 1px solid #303640;
+  background: #181c22;
+  border-radius: 3px;
+  padding: 4px;
+  color: #c8d0da;
+  box-shadow: 0 5px 16px rgb(0 0 0 / 0.38);
+}
+
+.sqlEditor .cm-searchRow {
+  display: grid;
+  grid-template-columns: 20px minmax(150px, 1fr) auto repeat(6, 24px);
+  align-items: center;
+  gap: 2px;
+}
+
+.sqlEditor .cm-replaceRow {
+  display: none;
+  grid-template-columns: 20px minmax(150px, 1fr) auto auto;
+  margin-top: 3px;
+}
+
+.sqlEditor .cm-replaceVisible .cm-replaceRow {
+  display: grid;
+}
+
+.sqlEditor .cm-replaceRow::before {
+  content: "";
+}
+
+.sqlEditor .cm-vscodeSearch .cm-textfield {
+  min-width: 0;
+  height: 24px;
+  border: 1px solid #3a414c;
+  background: #101318;
+  color: #e8edf2;
+  border-radius: 2px;
+  padding: 2px 5px;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.sqlEditor .cm-vscodeSearch .cm-textfield:focus {
+  border-color: #5d86bd;
+}
+
+.sqlEditor .cm-searchCount {
+  min-width: 46px;
+  padding: 0 4px;
+  color: #c2c9d2;
+  font-size: 11px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sqlEditor .cm-searchButton {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #aab3be;
+  border-radius: 3px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.sqlEditor .cm-searchButton:hover,
+.sqlEditor .cm-searchButton.active {
+  background: #2a3039;
+  color: #f0f4f8;
+}
+
+.sqlEditor .cm-searchOption {
+  font-size: 11px;
+}
+
+.sqlEditor .cm-wholeWord {
+  text-decoration: underline;
+}
+
+.sqlEditor .cm-toggleReplace {
+  font-size: 18px;
+}
+
+.sqlEditor .cm-replaceButton {
+  width: auto;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.sqlEditor .cm-searchMatch {
+  background: rgb(234 184 83 / 0.38);
+}
+
+.sqlEditor .cm-searchMatch-selected {
+  background: rgb(234 184 83 / 0.72);
+}
+
+.cm-tooltip {
+  border: 1px solid #3b4655 !important;
+  background: #151a21 !important;
+  color: #e8edf2;
+  border-radius: 8px;
+  box-shadow: 0 16px 42px rgb(0 0 0 / 0.36);
+  overflow: hidden;
+}
+
+.cm-tooltip-autocomplete ul {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  max-height: 220px;
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: #223149 !important;
+  color: #f0f5fb !important;
+}

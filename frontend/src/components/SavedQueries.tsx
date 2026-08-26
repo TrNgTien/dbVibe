@@ -1,5 +1,6 @@
 import React from "react";
 import { Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function queryField(query, camelName, goName) {
   return query?.[camelName] ?? query?.[goName] ?? "";
@@ -12,36 +13,33 @@ export function SavedQueries({
   onDelete,
 }) {
   return (
-    <div className="savedQueries">
-      <h3>Stored Query</h3>
+    <div className="flex flex-col gap-1.5 border-t border-border pt-2">
+      <h3 className="mb-0.5 px-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Stored Query
+      </h3>
       {queries.map((query) => {
         const id = queryField(query, "id", "ID");
         const name = queryField(query, "name", "Name");
         const updatedAt = queryField(query, "updatedAt", "UpdatedAt");
         const isDeleting = deletingQueryIds.has(id);
         return (
-          <div key={id} style={{ display: "flex", gap: "6px" }}>
-            <button
+          <div key={id} className="flex gap-1.5">
+            <Button
               type="button"
-              style={{ flex: 1, overflow: "hidden" }}
+              variant="outline"
+              className="min-w-0 flex-1 justify-start overflow-hidden px-2.5 font-normal"
               onClick={() => onOpen(query)}
               disabled={isDeleting}
             >
-              <span>{name}</span>
-              <small>
+              <span className="min-w-0 flex-1 truncate text-left">{name}</span>
+              <span className="flex-none text-xs text-muted-foreground">
                 {updatedAt ? new Date(updatedAt).toLocaleString() : ""}
-              </small>
-            </button>
-            <button
+              </span>
+            </Button>
+            <Button
               type="button"
-              className="iconButton"
-              style={{
-                flex: "0 0 auto",
-                padding: "0 8px",
-                border: "1px solid #333a44",
-                background: "#1c2128",
-                borderRadius: "6px",
-              }}
+              variant="outline"
+              size="icon"
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -51,8 +49,8 @@ export function SavedQueries({
               title="Delete query"
               aria-label={`Delete ${name || "query"}`}
             >
-              <Trash2 size={15} />
-            </button>
+              <Trash2 />
+            </Button>
           </div>
         );
       })}
