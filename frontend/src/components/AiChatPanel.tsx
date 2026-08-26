@@ -25,6 +25,18 @@ import {
 } from "../utils/api";
 import { AiSettingsForm } from "./AiSettings";
 import { Markdown } from "./Markdown";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Kbd } from "@/components/ui/kbd";
+import { InputGroup, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 const SESSIONS_KEY = "tnt-sql-ai-sessions-v1";
 const ACTIVE_SESSION_KEY = "tnt-sql-ai-active-session-v1";
@@ -113,7 +125,17 @@ function buildMessages(history, detail) {
   return [system, ...messages];
 }
 
-export const AiChatPanel = forwardRef(function AiChatPanel(
+export const AiChatPanel = forwardRef<
+  { ask(text: string): void },
+  {
+    detail: any;
+    connection?: any;
+    onClose: () => void;
+    onInsertQuery: (sql: string) => void;
+    onToast: (message: string) => void;
+    visible: boolean;
+  }
+>(function AiChatPanel(
   { detail, onClose, onInsertQuery, onToast, visible },
   ref,
 ) {
@@ -136,7 +158,6 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
   const scrollRef = useRef(null);
   const streamingRef = useRef(false);
   const modelCacheRef = useRef({ signature: "", options: [] });
-  const modelPickerRef = useRef(null);
 
   const activeSession = sessions.find((s) => s.id === activeId) || sessions[0];
   const messages = activeSession ? activeSession.messages : [];
@@ -175,17 +196,6 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, streaming, showSettings]);
-
-  useEffect(() => {
-    if (!showModelPicker) return;
-    function onPointerDown(e) {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target)) {
-        setShowModelPicker(false);
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [showModelPicker]);
 
   const configured =
     settings &&
@@ -378,78 +388,127 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
 
   return (
     <aside
-      className={`aiPanel ${showSettings ? "aiPanelSettingsView" : ""} ${visible ? "" : "hidden"}`}
+      className={cn(
+        "flex min-h-0 flex-col overflow-hidden border-l border-border bg-card",
+        !visible && "hidden",
+      )}
     >
-      <div className="panelHead aiPanelHead">
-        <div className="aiPanelTitleWrap">
-          <h2 className="aiPanelTitle">
-            <Bot size={18} /> AI Chat
+      <div className="flex min-h-[45px] flex-none items-center justify-between gap-3 border-b border-border px-3 py-[9px]">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 className="flex items-center gap-1.5 text-[13px] font-bold text-foreground">
+            <Bot className="size-4.5" /> AI Chat
           </h2>
           {!showSettings && !showHistory && activeSession?.title !== "New chat" && (
-            <span className="aiPanelSubtitle">{activeSession?.title}</span>
+            <span className="max-w-[220px] truncate pl-[25px] text-[11px] text-muted-foreground">
+              {activeSession?.title}
+            </span>
           )}
         </div>
-        <div className="rowActions">
+        <div className="flex flex-none items-center gap-1">
           {streaming && (
-            <button onClick={stop} title="Stop generating">
-              <Square size={16} />
-            </button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="size-[30px]"
+              onClick={stop}
+              title="Stop generating"
+            >
+              <Square />
+            </Button>
           )}
-          <button onClick={newChat} title="New chat" disabled={streaming}>
-            <Plus size={16} />
-          </button>
-          <button
-            className={showHistory ? "active" : ""}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="size-[30px]"
+            onClick={newChat}
+            disabled={streaming}
+            title="New chat"
+          >
+            <Plus />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className={cn(
+              "size-[30px]",
+              showHistory && "border-primary text-primary",
+            )}
             onClick={() => {
               setShowSettings(false);
               setShowHistory(!showHistory);
             }}
             title="Chat history"
           >
-            <History size={16} />
-          </button>
-          <button
-            className={showSettings ? "active" : ""}
+            <History />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className={cn(
+              "size-[30px]",
+              showSettings && "border-primary text-primary",
+            )}
             onClick={() => {
               setShowHistory(false);
               setShowSettings(!showSettings);
             }}
             title="AI provider settings"
           >
-            <Settings2 size={16} />
-          </button>
-          <button onClick={onClose} title="Close AI panel">
-            <X size={16} />
-          </button>
+            <Settings2 />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="size-[30px]"
+            onClick={onClose}
+            title="Close AI panel"
+          >
+            <X />
+          </Button>
         </div>
       </div>
 
       {showHistory ? (
-        <div className="aiPanelBody aiSessionsBody">
-          <div className="aiSessionsList">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <div className="flex flex-col gap-1">
             {sortedSessions.map((s) => (
-              <div key={s.id} className={`aiSessionItem ${s.id === activeId ? "active" : ""}`}>
-                <button className="aiSessionOpen" onClick={() => openSession(s.id)}>
-                  <div className="aiSessionTitle">{s.title || "New chat"}</div>
-                  <div className="aiSessionMeta">
+              <div
+                key={s.id}
+                className={cn(
+                  "flex items-stretch gap-1 rounded-lg border border-transparent",
+                  s.id === activeId && "border-primary bg-accent",
+                  s.id !== activeId && "hover:bg-muted",
+                )}
+              >
+                <Button
+                  variant="ghost"
+                  className="min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-2"
+                  onClick={() => openSession(s.id)}
+                >
+                  <span className="w-full truncate text-[13px] text-foreground">
+                    {s.title || "New chat"}
+                  </span>
+                  <span className="w-full truncate text-[11px] text-muted-foreground">
                     {s.messages.filter((m) => m.role !== "system").length} messages
                     {s.model ? ` · ${s.model}` : ""}
-                  </div>
-                </button>
-                <button
-                  className="aiSessionDelete"
+                  </span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="flex-none text-muted-foreground hover:text-red-400"
                   title="Delete chat"
                   onClick={() => deleteSession(s.id)}
                 >
-                  <Trash2 size={13} />
-                </button>
+                  <Trash2 className="size-3.5" />
+                </Button>
               </div>
             ))}
           </div>
         </div>
       ) : showSettings ? (
-        <div className="aiPanelBody aiPanelSettingsBody">
-          <p className="aiPanelHint">
+        <div className="min-h-0 flex-1 gap-1 overflow-y-auto p-4">
+          <p className="mb-2.5 text-xs leading-relaxed text-muted-foreground">
             Connect any AI provider with an API key — OpenAI, Anthropic, Google
             Gemini, DeepSeek, OpenRouter, Groq, Mistral, xAI, or a local Ollama /
             OpenAI-compatible server.
@@ -463,75 +522,94 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
             onToast={onToast}
             onTested={setTestOk}
           />
-          <div className="aiSettingsSaveRow">
-            <button
-              className="primary"
+          <div className="mt-3.5">
+            <Button
+              className="w-full"
               onClick={saveSettings}
               disabled={!settings?.model || !testOk}
               title={
                 settings?.model && testOk
                   ? "Save provider and start chatting"
-                  : "Run \"Test connection\" successfully first, then save"
+                  : 'Run "Test connection" successfully first, then save'
               }
             >
-              <Check size={16} /> Save &amp; Start Chat
-            </button>
+              <Check data-icon="inline-start" /> Save & Start Chat
+            </Button>
           </div>
         </div>
       ) : settings === null ? (
-        <div className="aiPanelBody aiChatLoading">
-          <Loader2 size={20} className="spin" />
+        <div className="flex min-h-0 flex-1 items-center justify-center text-muted-foreground">
+          <Loader2 className="size-5 animate-spin" />
         </div>
       ) : (
         <>
-          <div className="aiChatMessages" ref={scrollRef}>
+          <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-3.5" ref={scrollRef}>
             {messages.length === 0 && (
-              <div className="aiChatEmpty">
-                <Sparkles size={22} />
-                <p>Ask about a query, schema, or error.</p>
-                <p className="aiChatEmptyHint">
-                  Select SQL in the editor and press <kbd>Cmd</kbd>+<kbd>L</kbd>, or
+              <div className="m-auto flex flex-col items-center gap-2 p-5 text-center text-muted-foreground">
+                <Sparkles className="mb-1 size-5 text-amber-400" />
+                <p className="text-sm">Ask about a query, schema, or error.</p>
+                <p className="max-w-60 text-xs leading-relaxed text-muted-foreground/80">
+                  Select SQL in the editor and press <Kbd>Cmd</Kbd>+<Kbd>L</Kbd>, or
                   type a question below.
                 </p>
               </div>
             )}
             {messages.map((message) => (
-              <div key={message.id} className={`aiMsg ${message.role}`}>
-                <div className="aiMsgRole">
+              <div key={message.id} className="flex flex-col gap-1.5">
+                <div
+                  className={cn(
+                    "text-[11px] font-bold uppercase tracking-wider text-muted-foreground",
+                    message.role === "user" && "text-amber-400",
+                  )}
+                >
                   {message.role === "user" ? "You" : "AI"}
                 </div>
-                <div className="aiMsgBody">
+                <div
+                  className={cn(
+                    "rounded-lg border border-border p-2.5 text-[13px] leading-relaxed text-foreground",
+                    message.role === "user" ? "bg-accent" : "bg-muted/50",
+                  )}
+                >
                   {message.content ? (
                     <Markdown text={message.content} onInsert={onInsertQuery} />
                   ) : message.streaming ? (
-                    <span className="aiTyping">
-                      <Loader2 size={13} className="spin" />
+                    <span className="inline-flex items-center text-muted-foreground">
+                      <Loader2 className="mr-1 size-3.5 animate-spin" />
                     </span>
                   ) : null}
                 </div>
                 {message.role === "assistant" && message.content && (
-                  <div className="aiMsgActions">
-                    <button onClick={() => copyText(message.content)}>
-                      <Copy size={12} /> Copy
-                    </button>
+                  <div className="self-start">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-muted-foreground hover:text-primary"
+                      onClick={() => copyText(message.content)}
+                    >
+                      <Copy data-icon="inline-start" className="size-3" /> Copy
+                    </Button>
                   </div>
                 )}
               </div>
             ))}
           </div>
 
-          <div className="aiChatComposer">
+          <div className="flex flex-col gap-2 border-t border-border bg-muted/20 p-2.5">
             {!configured && !streaming && (
-              <div className="aiChatConfigHint">
-                <button onClick={() => setShowSettings(true)}>
-                  <Settings2 size={13} /> Configure AI provider to start chatting
-                </button>
-              </div>
+              <Button
+                variant="outline"
+                className="w-full border-dashed border-primary text-primary hover:bg-accent hover:text-primary"
+                onClick={() => setShowSettings(true)}
+              >
+                <Settings2 data-icon="inline-start" className="size-3.5" /> Configure AI
+                provider to start chatting
+              </Button>
             )}
-            <textarea
+            <Textarea
               value={input}
               placeholder="Ask about a query, schema, or error..."
               rows={3}
+              className="min-h-20 resize-none bg-background"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -540,116 +618,39 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
                 }
               }}
             />
-            <div className="aiChatComposerRow">
-              <div className="aiModelPickerWrap" ref={modelPickerRef}>
-                <button
-                  className="aiModelPickerBtn"
-                  onClick={() => (showModelPicker ? setShowModelPicker(false) : openModelPicker())}
-                  title="Switch provider / model"
-                >
-                  {settings?.model
-                    ? `${aiProviderLabel(settings.provider)} · ${settings.model}`
-                    : "Select model"}{" "}
-                  <ChevronDown size={12} />
-                </button>
-                {showModelPicker && draft && (
-                  <div className="aiModelPopover">
-                    <label className="aiModelProviderRow">
-                      Provider
-                      <select
-                        value={draft.provider || "openai"}
-                        onChange={(e) => changeDraftProvider(e.target.value)}
-                      >
-                        {Object.keys(aiProviderDefaults).map((provider) => (
-                          <option key={provider} value={provider}>
-                            {aiProviderLabel(provider)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {aiProviderRequiresKey(draft.provider) && (
-                      <div className="aiModelKeyRow">
-                        <input
-                          type="password"
-                          value={draft.apiKey || ""}
-                          placeholder="API key"
-                          spellCheck={false}
-                          autoComplete="off"
-                          onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
-                        />
-                        <button
-                          onClick={connectDraft}
-                          disabled={!draft.apiKey || modelLoading}
-                          title="Connect"
-                        >
-                          <PlugZap size={13} />
-                        </button>
-                      </div>
-                    )}
-                    <div className="aiModelSearchRow">
-                      <Search size={13} />
-                      <input
-                        autoFocus
-                        value={modelSearch}
-                        placeholder="Search models"
-                        onChange={(e) => setModelSearch(e.target.value)}
-                      />
-                    </div>
-                    <div className="aiModelList">
-                      {modelLoading && (
-                        <div className="aiModelStatus">
-                          <Loader2 size={13} className="spin" /> Loading models…
-                        </div>
-                      )}
-                      {!modelLoading && modelError && (
-                        <div className="aiModelStatus aiModelStatusErr">{modelError}</div>
-                      )}
-                      {!modelLoading &&
-                        !modelError &&
-                        aiProviderRequiresKey(draft.provider) &&
-                        !draft.apiKey && (
-                          <div className="aiModelStatus">Enter an API key to load models.</div>
-                        )}
-                      {!modelLoading &&
-                        !modelError &&
-                        modelOptions.length === 0 &&
-                        (!aiProviderRequiresKey(draft.provider) || draft.apiKey) && (
-                          <div className="aiModelStatus">No models found.</div>
-                        )}
-                      {!modelLoading &&
-                        modelOptions
-                          .filter((m) => m.toLowerCase().includes(modelSearch.trim().toLowerCase()))
-                          .map((m) => (
-                            <button
-                              key={m}
-                              className={`aiModelOption ${
-                                m === settings?.model && draft.provider === settings?.provider
-                                  ? "active"
-                                  : ""
-                              }`}
-                              onClick={() => confirmModel(m)}
-                            >
-                              {m}
-                              {m === settings?.model && draft.provider === settings?.provider && (
-                                <Check size={13} />
-                              )}
-                            </button>
-                          ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <span className="aiChatComposerHint">
+            <div className="flex items-center justify-between gap-2">
+              <ModelPicker
+                open={showModelPicker}
+                onOpenChange={(open) => {
+                  if (open) openModelPicker();
+                  setShowModelPicker(open);
+                }}
+                draft={draft}
+                settings={settings}
+                modelLoading={modelLoading}
+                modelError={modelError}
+                modelOptions={modelOptions}
+                modelSearch={modelSearch}
+                setModelSearch={setModelSearch}
+                changeDraftProvider={changeDraftProvider}
+                setDraft={setDraft}
+                connectDraft={connectDraft}
+                confirmModel={confirmModel}
+              />
+              <span className="text-[11px] text-muted-foreground">
                 Enter to send · Shift+Enter for newline
               </span>
-              <button
-                className="primary"
+              <Button
                 onClick={() => send(input)}
                 disabled={!input.trim() || streaming}
               >
-                {streaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+                {streaming ? (
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                ) : (
+                  <Send data-icon="inline-start" />
+                )}
                 Send
-              </button>
+              </Button>
             </div>
           </div>
         </>
@@ -657,3 +658,138 @@ export const AiChatPanel = forwardRef(function AiChatPanel(
     </aside>
   );
 });
+
+function ModelPicker({
+  open,
+  onOpenChange,
+  draft,
+  settings,
+  modelLoading,
+  modelError,
+  modelOptions,
+  modelSearch,
+  setModelSearch,
+  changeDraftProvider,
+  setDraft,
+  connectDraft,
+  confirmModel,
+}) {
+  const filteredModels = (modelOptions || []).filter((m) =>
+    m.toLowerCase().includes(modelSearch.trim().toLowerCase()),
+  );
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="max-w-[160px] justify-between text-muted-foreground hover:text-foreground"
+          title="Switch provider / model"
+        >
+          <span className="truncate">
+            {settings?.model
+              ? `${aiProviderLabel(settings.provider)} · ${settings.model}`
+              : "Select model"}
+          </span>
+          <ChevronDown className="size-3 flex-none text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" side="top" className="w-64 p-0">
+        {draft && (
+          <>
+            <div className="flex flex-col gap-1 px-2.5 pb-0 pt-2 text-[11px] text-muted-foreground">
+              Provider
+              <NativeSelect
+                size="sm"
+                value={draft.provider || "openai"}
+                onChange={(e) => changeDraftProvider(e.target.value)}
+              >
+                {Object.keys(aiProviderDefaults).map((provider) => (
+                  <option key={provider} value={provider}>
+                    {aiProviderLabel(provider)}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            {aiProviderRequiresKey(draft.provider) && (
+              <div className="px-2.5 pt-2">
+                <InputGroup>
+                  <InputGroupInput
+                    type="password"
+                    value={draft.apiKey || ""}
+                    placeholder="API key"
+                    spellCheck={false}
+                    autoComplete="off"
+                    onChange={(e) => setDraft({ ...draft, apiKey: e.target.value })}
+                  />
+                  <InputGroupButton
+                    variant="outline"
+                    size="icon-sm"
+                    onClick={connectDraft}
+                    disabled={!draft.apiKey || modelLoading}
+                    title="Connect"
+                  >
+                    <PlugZap className="size-3.5" />
+                  </InputGroupButton>
+                </InputGroup>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 border-b border-border px-2.5 py-2 text-muted-foreground">
+              <Search className="size-3.5" />
+              <Input
+                autoFocus
+                value={modelSearch}
+                placeholder="Search models"
+                className="h-6 border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
+                onChange={(e) => setModelSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex max-h-72 flex-col gap-0.5 overflow-y-auto p-1">
+              {modelLoading && (
+                <div className="flex items-center gap-1.5 p-2.5 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" /> Loading models…
+                </div>
+              )}
+              {!modelLoading && modelError && (
+                <div className="p-2.5 text-xs text-red-400">{modelError}</div>
+              )}
+              {!modelLoading &&
+                !modelError &&
+                aiProviderRequiresKey(draft.provider) &&
+                !draft.apiKey && (
+                  <div className="p-2.5 text-xs text-muted-foreground">
+                    Enter an API key to load models.
+                  </div>
+                )}
+              {!modelLoading &&
+                !modelError &&
+                modelOptions.length === 0 &&
+                (!aiProviderRequiresKey(draft.provider) || draft.apiKey) && (
+                  <div className="p-2.5 text-xs text-muted-foreground">No models found.</div>
+                )}
+              {!modelLoading &&
+                filteredModels.map((m) => {
+                  const active = m === settings?.model && draft.provider === settings?.provider;
+                  return (
+                    <Button
+                      key={m}
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "w-full justify-between rounded-md px-2 py-1.5 text-xs font-normal",
+                        active ? "text-primary" : "text-foreground",
+                      )}
+                      onClick={() => confirmModel(m)}
+                    >
+                      {m}
+                      {active && <Check className="size-3.5" />}
+                    </Button>
+                  );
+                })}
+            </div>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}

@@ -8,6 +8,11 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { Page, Panel, PanelHeader } from "../components/shared/layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Empty, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { cn } from "@/lib/utils";
 
 export function WorkspacePage({
   workspaces,
@@ -45,22 +50,20 @@ export function WorkspacePage({
   };
 
   return (
-    <section className="workspacePage">
-      <section className="panel workspacePanel">
-        <div className="panelHead">
-          <div>
-            <h2>Workspaces</h2>
-            <small>Organize connections and share them via import/export</small>
-          </div>
-          <div className="rowActions">
-            <button onClick={onImport}>
-              <Download size={15} /> Import
-            </button>
-          </div>
-        </div>
+    <Page>
+      <Panel>
+        <PanelHeader
+          title="Workspaces"
+          description="Organize connections and share them via import/export"
+          actions={
+            <Button variant="outline" size="sm" onClick={onImport}>
+              <Download data-icon="inline-start" /> Import
+            </Button>
+          }
+        />
 
-        <div className="newWorkspace">
-          <input
+        <div className="flex gap-2 px-2.5 pt-2.5">
+          <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && create()}
@@ -69,29 +72,28 @@ export function WorkspacePage({
             autoCapitalize="off"
             spellCheck={false}
           />
-          <button
-            className="primary"
-            onClick={create}
-            disabled={!newName.trim()}
-          >
-            <FolderPlus size={15} /> Create
-          </button>
+          <Button onClick={create} disabled={!newName.trim()}>
+            <FolderPlus data-icon="inline-start" /> Create
+          </Button>
         </div>
 
-        <div className="workspaceList">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto p-2.5">
           {workspaces.map((ws) => {
             const active = currentWorkspace?.id === ws.id;
             const editing = editingId === ws.id;
             return (
               <div
-                className={`workspaceRow ${active ? "active" : ""}`}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-2.5",
+                  active && "border-primary/50",
+                )}
                 key={ws.id}
               >
                 {editing ? (
                   <>
-                    <input
+                    <Input
                       autoFocus
-                      className="workspaceRenameInput"
+                      className="flex-1"
                       value={draftName}
                       onChange={(e) => setDraftName(e.target.value)}
                       onKeyDown={(e) => {
@@ -99,41 +101,60 @@ export function WorkspacePage({
                         if (e.key === "Escape") setEditingId(null);
                       }}
                     />
-                    <div className="rowActions">
-                      <button
-                        className="primary"
+                    <div className="flex flex-none items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
                         title="Save name"
                         onClick={() => submitRename(ws)}
                       >
-                        <Save size={14} />
-                      </button>
-                      <button
+                        <Save />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         title="Cancel"
                         onClick={() => setEditingId(null)}
                       >
-                        <X size={14} />
-                      </button>
+                        <X />
+                      </Button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <span className="workspaceRowName">
-                      <strong>{ws.name}</strong>
-                      {active && <small>current</small>}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <strong className="truncate text-sm font-semibold">
+                        {ws.name}
+                      </strong>
+                      {active && (
+                        <small className="text-xs text-primary">current</small>
+                      )}
                     </span>
-                    <div className="rowActions">
-                      <button title="Rename" onClick={() => startRename(ws)}>
-                        <Pencil size={14} />
-                      </button>
-                      <button
+                    <div className="flex flex-none items-center gap-1.5">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Rename"
+                        onClick={() => startRename(ws)}
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         title="Export workspace"
                         onClick={() => onExport(ws.id)}
                       >
-                        <Upload size={14} />
-                      </button>
-                      <button title="Delete" onClick={() => onDelete(ws.id)}>
-                        <Trash2 size={14} />
-                      </button>
+                        <Upload />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Delete"
+                        onClick={() => onDelete(ws.id)}
+                      >
+                        <Trash2 />
+                      </Button>
                     </div>
                   </>
                 )}
@@ -141,13 +162,15 @@ export function WorkspacePage({
             );
           })}
           {!workspaces.length && (
-            <div className="empty workspaceEmpty">
-              <FolderPlus size={28} />
-              <p>No workspaces yet</p>
-            </div>
+            <Empty className="m-auto">
+              <EmptyMedia variant="icon">
+                <FolderPlus />
+              </EmptyMedia>
+              <EmptyTitle>No workspaces yet</EmptyTitle>
+            </Empty>
           )}
         </div>
-      </section>
-    </section>
+      </Panel>
+    </Page>
   );
 }

@@ -29,7 +29,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import "./styles.css";
+import "./index.css";
+import "./codemirror.css";
 import { SqlEditor } from "./components/SqlEditor";
 import {
   api,
@@ -52,6 +53,20 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { SidebarTree, ConnectionContextMenu } from "./components/SidebarTree";
 import { SavedQueries } from "./components/SavedQueries";
 import { AiChatPanel } from "./components/AiChatPanel";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 const defaultConnection = {
   id: "",
@@ -476,6 +491,7 @@ function App() {
   const [isResizingAi, setIsResizingAi] = useState(false);
   const editorRef = useRef(null);
   const aiChatRef = useRef(null);
+  const connectAttemptRef = useRef(0);
 
   function openSettings() {
     setSettingsDraft({ ...generalSettings });
@@ -937,8 +953,9 @@ function App() {
     }
   }
 
-  async function connect(conn = selected) {
+  async function connect(conn = selected, expand = true) {
     if (!conn?.id) return;
+    const attempt = ++connectAttemptRef.current;
     if (connectedConnections[conn.id]) {
       const cached = details[conn.id] || null;
       setSelected(conn);
@@ -951,7 +968,7 @@ function App() {
       setExplain(null);
       setWorkspaceView("query");
       setConnectionStatus("connected");
-      setExpandedConnections((current) => ({ ...current, [conn.id]: true }));
+      setExpandedConnections((current) => ({ ...current, [conn.id]: expand }));
       if (cached) {
         setExpandedObjects((current) => ({
           ...current,
@@ -972,9 +989,12 @@ function App() {
     setExplain(null);
     setWorkspaceView("query");
     setConnectionStatus("connecting");
+    setLoading("connect");
     try {
-      const next = await run("connect", () => api.call("Connect", conn.id));
+      const next = await api.call("Connect", conn.id);
+      if (connectAttemptRef.current !== attempt) return next;
       const savedQueries = await api.call("ListSavedQueries", conn.id);
+      if (connectAttemptRef.current !== attempt) return next;
       setDetail(next);
       setDetails((current) => ({ ...current, [conn.id]: next }));
       setQueries(savedQueries || []);
@@ -986,7 +1006,7 @@ function App() {
       }));
       setExpandedConnections((current) => ({
         ...current,
-        [conn.id]: true,
+        [conn.id]: expand,
       }));
       setConnectedConnections((current) => ({
         ...current,
@@ -995,8 +1015,12 @@ function App() {
       setConnectionStatus("connected");
       return next;
     } catch (err) {
+      if (connectAttemptRef.current !== attempt) return null;
+      setError(err?.message || String(err));
       setConnectionStatus("error");
       throw err;
+    } finally {
+      if (connectAttemptRef.current === attempt) setLoading("");
     }
   }
 
@@ -1404,7 +1428,7 @@ function App() {
   }
 
   function selectConnection(conn) {
-    connect(conn);
+    connect(conn, !expandedConnections[conn.id]);
   }
 
   function editConnection(conn) {
@@ -1540,85 +1564,73 @@ function App() {
   const workspaceModals = (
     <>
       {workspacePromptOpen && (
-        <div
-          className="modalBackdrop"
-          onMouseDown={() => setWorkspacePromptOpen(false)}
+        <Dialog
+          open
+          onOpenChange={(open) => !open && setWorkspacePromptOpen(false)}
         >
-          <div
-            className="modalPanel workspaceModal"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modalHead">
-              <h2>New Workspace</h2>
-              <button
-                className="iconButton"
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>New Workspace</DialogTitle>
+            </DialogHeader>
+            <FieldGroup className="gap-4">
+              <Field>
+                <FieldLabel>Name</FieldLabel>
+                <Input
+                  autoFocus
+                  className="min-h-[38px]"
+                  value={workspaceName}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createWorkspace();
+                  }}
+                  placeholder="e.g. Production"
+                />
+              </Field>
+            </FieldGroup>
+            <DialogFooter className="-mx-0 -mb-0 bg-transparent p-3">
+              <Button
+                variant="outline"
                 onClick={() => setWorkspacePromptOpen(false)}
-                title="Close"
               >
-                <X size={18} />
-              </button>
-            </div>
-            <label className="workspaceNameField">
-              Name
-              <input
-                autoFocus
-                value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") createWorkspace();
-                }}
-                placeholder="e.g. Production"
-              />
-            </label>
-            <div className="modalActions">
-              <button onClick={() => setWorkspacePromptOpen(false)}>
                 Cancel
-              </button>
-              <button
-                className="primary"
-                onClick={createWorkspace}
+              </Button>
+              <Button
+                onClick={() => createWorkspace()}
                 disabled={!workspaceName.trim()}
               >
-                <FolderPlus size={15} /> Create
-              </button>
-            </div>
-          </div>
-        </div>
+                <FolderPlus data-icon="inline-start" /> Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {deleteWorkspaceTarget && (
-        <div
-          className="modalBackdrop"
-          onMouseDown={() => setDeleteWorkspaceTarget(null)}
+        <Dialog
+          open
+          onOpenChange={(open) => !open && setDeleteWorkspaceTarget(null)}
         >
-          <div
-            className="modalPanel workspaceModal"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="modalHead">
-              <h2>Delete Workspace</h2>
-              <button
-                className="iconButton"
-                onClick={() => setDeleteWorkspaceTarget(null)}
-                title="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <p className="workspaceConfirmText">
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Delete Workspace</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm leading-relaxed text-foreground/80">
               Delete "{deleteWorkspaceTarget.name}"? Its connections will be
               deleted too.
             </p>
-            <div className="modalActions">
-              <button onClick={() => setDeleteWorkspaceTarget(null)}>
+            <DialogFooter className="-mx-0 -mb-0 bg-transparent p-3">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteWorkspaceTarget(null)}
+              >
                 Cancel
-              </button>
-              <button className="danger" onClick={confirmDeleteWorkspace}>
-                <Trash2 size={15} /> Delete
-              </button>
-            </div>
-          </div>
-        </div>
+              </Button>
+              <Button variant="destructive" onClick={confirmDeleteWorkspace}>
+                <Trash2 data-icon="inline-start" /> Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </>
   );
@@ -1638,7 +1650,7 @@ function App() {
 
   if (!selected && !creatingConnection) {
     return (
-      <>
+      <TooltipProvider>
         <StartupPage
           groups={groupedConnections}
           expandedWorkspaces={expandedWorkspaces}
@@ -1665,16 +1677,16 @@ function App() {
           position="top-right"
           toastOptions={{
             style: {
-              background: "#171c23",
-              color: "#c8d0da",
-              border: "1px solid #35404d",
+              background: "var(--popover)",
+              color: "var(--popover-foreground)",
+              border: "1px solid var(--border)",
             },
             success: {
-              style: { borderColor: "#317d43" },
+              style: { borderColor: "oklch(0.696 0.17 162.48 / 0.6)" },
             },
           }}
         />
-      </>
+      </TooltipProvider>
     );
   }
 
@@ -1685,55 +1697,64 @@ function App() {
   ].join(" ");
 
   return (
-    <div
-      className={`app ${sidebarVisible ? "" : "sidebar-hidden"} ${aiPanelVisible ? "ai-panel-visible" : ""}`}
-      style={{
-        gridTemplateColumns: gridColumns,
-      }}
-    >
+    <TooltipProvider>
+      <div
+        className="relative grid h-screen overflow-hidden"
+        style={{
+          gridTemplateColumns: gridColumns,
+        }}
+      >
       {sidebarVisible && (
         <>
-          <aside className="sidebar">
-            <div className="sidebarHeader">
-              <div className="sidebarTitle">
-                <strong>DATABASE</strong>
+          <aside className="flex min-h-0 flex-col gap-3 overflow-hidden border-r border-border bg-card p-3.5">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <strong className="text-[11px] font-bold tracking-wider text-muted-foreground">
+                  DATABASE
+                </strong>
               </div>
-              <div className="sidebarActions">
-                <button
-                  className="iconButton"
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() =>
                     selected ? connect(selected) : refreshConnections()
                   }
                   aria-label="Refresh connection"
                 >
-                  <RefreshCw size={15} />
-                </button>
+                  <RefreshCw className="size-3.5" />
+                </Button>
                 {Object.values(expandedConnections).some(Boolean) ? (
-                  <button
-                    className="iconButton"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={collapseAll}
                     aria-label="Collapse all"
                   >
-                    <ChevronsUp size={15} />
-                  </button>
+                    <ChevronsUp className="size-3.5" />
+                  </Button>
                 ) : (
-                  <button
-                    className="iconButton"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={expandAll}
                     aria-label="Expand all"
                   >
-                    <ChevronsDown size={15} />
-                  </button>
+                    <ChevronsDown className="size-3.5" />
+                  </Button>
                 )}
-                <button
-                  className="iconButton"
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={startNewConnection}
                   aria-label="New connection"
                 >
-                  <Plus size={15} />
-                </button>
-                <button
-                  className={`iconButton ${selectionMode ? "active" : ""}`}
+                  <Plus className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className={cn(selectionMode && "bg-accent text-primary")}
                   onClick={toggleSelectionMode}
                   aria-label={
                     selectionMode ? "Exit select mode" : "Select connections"
@@ -1742,32 +1763,35 @@ function App() {
                     selectionMode ? "Exit select mode" : "Select connections"
                   }
                 >
-                  <ListChecks size={15} />
-                </button>
-                <button
-                  className="iconButton"
+                  <ListChecks className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={() => {
                     setWorkspaceName("");
                     setWorkspacePromptOpen(true);
                   }}
                   aria-label="New workspace"
                 >
-                  <FolderPlus size={15} />
-                </button>
-                <button
-                  className="iconButton"
+                  <FolderPlus className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={importWorkspace}
                   aria-label="Import workspace"
                 >
-                  <Download size={15} />
-                </button>
+                  <Download className="size-3.5" />
+                </Button>
               </div>
             </div>
 
-            <section className="panel sidebarPanel">
-              <label className="search sidebarSearch">
-                <Search size={15} />
+            <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card">
+              <label className="flex flex-none items-center gap-2 border-b border-border p-2.5">
+                <Search className="size-3.5 flex-none text-muted-foreground" />
                 <input
+                  className="h-6 w-full min-w-0 border-0 bg-transparent p-0 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   value={filter}
                   onChange={(event) => setFilter(event.target.value)}
                   placeholder="Filter tables"
@@ -1777,58 +1801,67 @@ function App() {
                   spellCheck={false}
                 />
               </label>
-              <SidebarTree
-                groups={groupedConnections}
-                expandedWorkspaces={expandedWorkspaces}
-                onToggleWorkspace={toggleWorkspaceExpanded}
-                onExportWorkspace={exportWorkspace}
-                onDeleteWorkspace={(id) =>
-                  setDeleteWorkspaceTarget(
-                    workspaces.find((w) => w.id === id) || null,
-                  )
-                }
-                objectFilter={filter}
-                details={details}
-                expandedConnections={expandedConnections}
-                expandedObjects={expandedObjects}
-                connectedConnections={connectedConnections}
-                selected={selected}
-                onSelectConnection={selectConnection}
-                onToggleConnection={toggleConnectionExpanded}
-                onToggleObject={toggleObject}
-                onOpenDatabase={connectDatabase}
-                onOpenTable={openTable}
-                onDeleteRedisKey={deleteRedisKey}
-                onNewQuery={() => editorRef.current?.focus()}
-                onContextMenu={openConnectionMenu}
-                selectionMode={selectionMode}
-                selectedConnIds={selectedConnIds}
-                onToggleConnSelected={toggleConnSelected}
-              />
-              <SavedQueries
-                queries={queries}
-                deletingQueryIds={deletingQueryIds}
-                onOpen={(query) =>
-                  setSqlText(savedQueryField(query, "sql", "SQL"))
-                }
-                onDelete={deleteSavedQuery}
-              />
+              <div className="min-h-0 flex-1 overflow-auto">
+                <SidebarTree
+                  groups={groupedConnections}
+                  expandedWorkspaces={expandedWorkspaces}
+                  onToggleWorkspace={toggleWorkspaceExpanded}
+                  onExportWorkspace={exportWorkspace}
+                  onDeleteWorkspace={(id) =>
+                    setDeleteWorkspaceTarget(
+                      workspaces.find((w) => w.id === id) || null,
+                    )
+                  }
+                  objectFilter={filter}
+                  details={details}
+                  expandedConnections={expandedConnections}
+                  expandedObjects={expandedObjects}
+                  connectedConnections={connectedConnections}
+                  selected={selected}
+                  onSelectConnection={selectConnection}
+                  onToggleConnection={toggleConnectionExpanded}
+                  onToggleObject={toggleObject}
+                  onOpenDatabase={connectDatabase}
+                  onOpenTable={openTable}
+                  onDeleteRedisKey={deleteRedisKey}
+                  onNewQuery={() => editorRef.current?.focus()}
+                  onContextMenu={openConnectionMenu}
+                  selectionMode={selectionMode}
+                  selectedConnIds={selectedConnIds}
+                  onToggleConnSelected={toggleConnSelected}
+                />
+              </div>
+              <div className="flex-none overflow-auto">
+                <SavedQueries
+                  queries={queries}
+                  deletingQueryIds={deletingQueryIds}
+                  onOpen={(query) =>
+                    setSqlText(savedQueryField(query, "sql", "SQL"))
+                  }
+                  onDelete={deleteSavedQuery}
+                />
+              </div>
             </section>
             {selectionMode && (
-              <div className="selectionBar">
-                <div className="selectionBarInfo">
-                  <Check size={14} />
-                  <strong>{selectedConnIds.size}</strong>
+              <div className="flex flex-none items-center gap-2 border-t border-border bg-muted/20 p-2">
+                <div className="inline-flex flex-none items-center gap-1.5 text-xs text-muted-foreground">
+                  <Check size={14} className="text-primary" />
+                  <strong className="text-foreground">
+                    {selectedConnIds.size}
+                  </strong>
                   <span>selected</span>
-                  <button
-                    className="iconButton"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     title="Clear selection"
                     onClick={() => setSelectedConnIds(new Set())}
                   >
-                    <X size={13} />
-                  </button>
+                    <X className="size-3.5" />
+                  </Button>
                 </div>
-                <select
+                <NativeSelect
+                  size="sm"
+                  className="min-w-0 flex-1"
                   value={selectionMoveTarget}
                   onChange={(e) => setSelectionMoveTarget(e.target.value)}
                   aria-label="Move to workspace"
@@ -1839,14 +1872,15 @@ function App() {
                       {ws.name}
                     </option>
                   ))}
-                </select>
-                <button
-                  className="primary"
+                </NativeSelect>
+                <Button
+                  size="sm"
+                  className="flex-none"
                   disabled={!selectedConnIds.size}
                   onClick={moveSelectedConnections}
                 >
                   Move
-                </button>
+                </Button>
               </div>
             )}
             {connectionMenu && (
@@ -1885,7 +1919,10 @@ function App() {
             )}
           </aside>
           <div
-            className={`sidebar-resizer ${isResizing ? "resizing" : ""}`}
+            className={cn(
+              "absolute inset-y-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors",
+              isResizing && "bg-primary",
+            )}
             onMouseDown={(e) => {
               e.preventDefault();
               setIsResizing(true);
@@ -1895,111 +1932,120 @@ function App() {
         </>
       )}
 
-      <main className="main">
-        <header className="topbar">
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button
-              className="iconButton"
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-[18px]">
+        <header className="mb-3.5 flex flex-none items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => setSidebarVisible(!sidebarVisible)}
               title={sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}
-              style={{
-                flex: "0 0 auto",
-                height: "32px",
-                width: "32px",
-                border: "1px solid #333a44",
-              }}
             >
               {sidebarVisible ? (
-                <PanelLeftClose size={16} />
+                <PanelLeftClose className="size-4" />
               ) : (
-                <PanelLeftOpen size={16} />
+                <PanelLeftOpen className="size-4" />
               )}
-            </button>
+            </Button>
             <div>
-              <h1>{selected?.name || "Dashboard"}</h1>
-              <p>
+              <h1 className="text-[22px] font-bold text-foreground">
+                {selected?.name || "Dashboard"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
                 {selected
                   ? `${driverLabel(selected.driver)}://${selected.host}:${selected.port}/${detail?.database || selected.database}`
                   : "Stored connections and query workspace"}
               </p>
             </div>
           </div>
-          <div className="actions">
+          <div className="flex flex-none items-center gap-2">
             {!editingConnectionDetails && selected && (
-              <div className="viewTabs" aria-label="Workspace">
-                <button
-                  className={workspaceView === "workspace" ? "active" : ""}
-                  onClick={() => setWorkspaceView("workspace")}
-                >
-                  <FolderPlus size={14} /> Workspace
-                </button>
-                <button
-                  className={workspaceView === "query" ? "active" : ""}
-                  onClick={() => setWorkspaceView("query")}
-                >
-                  Query
-                </button>
-                <button
-                  className={workspaceView === "insights" ? "active" : ""}
-                  onClick={() => setWorkspaceView("insights")}
-                  disabled={
-                    selected?.driver !== "mysql" &&
-                    selected?.driver !== "postgres" &&
-                    selected?.driver !== "timescaledb" &&
-                    selected?.driver !== "redis" &&
-                    selected?.driver !== "mongodb"
-                  }
-                >
-                  <Gauge size={14} /> Insights
-                </button>
-                <button
-                  className={workspaceView === "optimizer" ? "active" : ""}
-                  onClick={() => setWorkspaceView("optimizer")}
-                  disabled={
-                    selected?.driver !== "mysql" &&
-                    selected?.driver !== "postgres" &&
-                    selected?.driver !== "timescaledb"
-                  }
-                >
-                  <Zap size={14} /> Optimizer
-                </button>
-                <button
-                  className={workspaceView === "trace" ? "active" : ""}
-                  onClick={() => setWorkspaceView("trace")}
-                >
-                  Trace Log
-                </button>
-                <button
-                  className={workspaceView === "exports" ? "active" : ""}
-                  onClick={() => setWorkspaceView("exports")}
-                >
-                  <FileDown size={14} /> Exports
-                </button>
-              </div>
+              <Tabs
+                value={workspaceView}
+                onValueChange={(view) => setWorkspaceView(view)}
+                aria-label="Workspace"
+              >
+                <TabsList>
+                  <TabsTrigger value="workspace">
+                    <FolderPlus className="size-3.5" data-icon="inline-start" />{" "}
+                    Workspace
+                  </TabsTrigger>
+                  <TabsTrigger value="query">Query</TabsTrigger>
+                  <TabsTrigger
+                    value="insights"
+                    disabled={
+                      selected?.driver !== "mysql" &&
+                      selected?.driver !== "postgres" &&
+                      selected?.driver !== "timescaledb" &&
+                      selected?.driver !== "redis" &&
+                      selected?.driver !== "mongodb"
+                    }
+                  >
+                    <Gauge className="size-3.5" data-icon="inline-start" />{" "}
+                    Insights
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="optimizer"
+                    disabled={
+                      selected?.driver !== "mysql" &&
+                      selected?.driver !== "postgres" &&
+                      selected?.driver !== "timescaledb"
+                    }
+                  >
+                    <Zap className="size-3.5" data-icon="inline-start" />{" "}
+                    Optimizer
+                  </TabsTrigger>
+                  <TabsTrigger value="trace">Trace Log</TabsTrigger>
+                  <TabsTrigger value="exports">
+                    <FileDown className="size-3.5" data-icon="inline-start" />{" "}
+                    Exports
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             )}
-            <button title="Settings (Cmd+,)" onClick={openSettings}>
-              <Settings size={16} />
-            </button>
-            <button
-              className={`aiToggle ${aiPanelVisible ? "active" : ""}`}
+            <Button variant="outline" title="Settings (Cmd+,)" onClick={openSettings}>
+              <Settings className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              className={cn(
+                "size-[38px] rounded-[9px]",
+                aiPanelVisible && "border-primary bg-accent text-primary",
+              )}
               title="AI Chat (Cmd+L)"
               aria-label="Toggle AI chat panel"
               onClick={() => setAiPanelVisible(!aiPanelVisible)}
             >
-              <Bot />
-            </button>
+              <Bot className="size-[19px]" />
+            </Button>
           </div>
         </header>
 
         {exportProgress && (
-          <div className={`toast exportToast ${exportProgress.status}`}>
-            <div className="exportToastHead">
-              <span>{exportProgress.message}</span>
-              <small>{exportProgress.progress}%</small>
+          <div
+            className={cn(
+              "mb-2.5 flex-none rounded-lg border p-2.5",
+              exportProgress.status === "error"
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : exportProgress.status === "done"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : "border-border bg-card text-foreground",
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm">{exportProgress.message}</span>
+              <small className="text-xs opacity-80">
+                {exportProgress.progress}%
+              </small>
             </div>
-            <div className="exportProgressTrack">
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted-foreground/15">
               <div
-                className="exportProgressBar"
+                className={cn(
+                  "h-full rounded-full transition-[width] duration-200 ease-linear",
+                  exportProgress.status === "error"
+                    ? "bg-destructive"
+                    : "bg-emerald-400",
+                )}
                 style={{ width: `${exportProgress.progress}%` }}
               />
             </div>
@@ -2019,57 +2065,63 @@ function App() {
 
         {(editingConnectionDetails || workspaceView === "query") && (
           <section
-            className={
+            className={cn(
+              "mb-3 grid min-h-0 flex-1 gap-3",
               connectionStatus === "connected" || editingConnectionDetails
-                ? "grid queryOnly"
-                : "grid"
-            }
+                ? "grid-cols-[minmax(0,1fr)]"
+                : "grid-cols-[430px_minmax(0,1fr)]",
+            )}
           >
             {(connectionStatus !== "connected" || editingConnectionDetails) && (
-              <section className="panel connectionPanel">
-                <div className="panelHead">
-                  <h2>Connection Detail</h2>
+              <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex min-h-[45px] flex-none items-center border-b border-border px-3 py-[9px]">
+                  <h2 className="text-sm font-semibold">Connection Detail</h2>
                 </div>
                 <ConnectionForm draft={draft} setDraft={setDraft} workspaces={workspaces} />
-                <div className="connectionActions">
-                  <div className="rowActions">
-                    <button
+                <div className="flex flex-none items-center justify-between gap-3 border-t border-border px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={duplicateConnection}
                       disabled={!draft.name}
                     >
-                      <Copy size={15} /> Duplicate
-                    </button>
-                    <button
+                      <Copy data-icon="inline-start" /> Duplicate
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
                       onClick={() => deleteConnection()}
                       disabled={!draft.id}
+                      title="Delete connection"
                     >
-                      <Trash2 size={15} />
-                    </button>
+                      <Trash2 />
+                    </Button>
                   </div>
-                  <div className="rowActions">
-                    <button onClick={testConnection}>
-                      <Activity size={15} /> Test
-                    </button>
-                    <button className="primary" onClick={saveConnection}>
-                      <Save size={15} /> Save &amp; Connect
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={testConnection}>
+                      <Activity data-icon="inline-start" /> Test
+                    </Button>
+                    <Button size="sm" onClick={saveConnection}>
+                      <Save data-icon="inline-start" /> Save & Connect
+                    </Button>
                   </div>
                 </div>
               </section>
             )}
 
             {!editingConnectionDetails && workspaceView === "query" && (
-              <section className="panel queryPanel">
-                <div className="panelHead">
-                  <h2>Command</h2>
+              <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex min-h-[45px] flex-none items-center justify-between gap-3 border-b border-border px-3 py-[9px]">
+                  <h2 className="text-sm font-semibold">Command</h2>
                   {selected && (
                     <span
-                      className="editorTarget"
+                      className="mr-auto flex max-w-[40%] items-center gap-1.5 overflow-hidden rounded-full border border-border bg-background px-2.5 py-1 text-xs whitespace-nowrap text-muted-foreground"
                       title={`${driverLabel(selected.driver)}://${selected.host}:${selected.port}/${detail?.database || selected.database || ""}`}
                     >
-                      <Database size={13} />
+                      <Database className="size-3.5 flex-none" />
                       <select
-                        className="editorTargetSelect editorTargetConn"
+                        className="max-w-[180px] cursor-pointer appearance-none border-0 bg-transparent p-0 pr-2 font-semibold text-foreground outline-none"
                         value={selected.id}
                         onChange={(e) => {
                           const conn = connections.find(
@@ -2096,9 +2148,9 @@ function App() {
                         if (!names.length) return null;
                         return (
                           <>
-                            <span className="editorTargetSep">/</span>
+                            <span className="flex-none text-muted-foreground/50">/</span>
                             <select
-                              className="editorTargetSelect editorTargetDb"
+                              className="max-w-[180px] cursor-pointer appearance-none border-0 bg-transparent p-0 pr-2 text-primary outline-none"
                               value={currentDb}
                               onChange={(e) => {
                                 if (
@@ -2120,8 +2172,10 @@ function App() {
                       })()}
                     </span>
                   )}
-                  <div className="rowActions">
-                    <button
+                  <div className="flex flex-none items-center gap-1.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => setShowTableDetail(!showTableDetail)}
                       title={
                         tableDetail
@@ -2130,28 +2184,30 @@ function App() {
                       }
                       disabled={!tableDetail}
                     >
-                      <Table2 size={15} />{" "}
+                      <Table2 data-icon="inline-start" />{" "}
                       {showTableDetail ? "Hide DDL" : "Show DDL"}
-                    </button>
-                    <button onClick={saveCurrentQuery}>
-                      <Save size={15} /> Query
-                    </button>
-                    <button
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={saveCurrentQuery}>
+                      <Save data-icon="inline-start" /> Query
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={askSelection}
                       title="Ask AI about the selected text or current query (Cmd+L)"
                     >
-                      <Sparkles size={15} /> Ask AI
-                    </button>
+                      <Sparkles data-icon="inline-start" /> Ask AI
+                    </Button>
                     {(selected?.driver === "mysql" ||
                       selected?.driver === "postgres" ||
                       selected?.driver === "timescaledb") && (
-                      <button onClick={explainAnalyze}>
-                        <Activity size={15} /> Explain
-                      </button>
+                      <Button variant="ghost" size="sm" onClick={explainAnalyze}>
+                        <Activity data-icon="inline-start" /> Explain
+                      </Button>
                     )}
-                    <button className="primary" onClick={execute}>
-                      <Play size={15} /> Run
-                    </button>
+                    <Button size="sm" onClick={execute}>
+                      <Play data-icon="inline-start" /> Run
+                    </Button>
                   </div>
                 </div>
                 <SqlEditor
@@ -2171,41 +2227,29 @@ function App() {
           workspaceView === "query" &&
           tableDetail &&
           showTableDetail && (
-            <div
-              className="modalBackdrop"
-              onMouseDown={() => setShowTableDetail(false)}
+            <Dialog
+              open
+              onOpenChange={(open) => !open && setShowTableDetail(false)}
             >
-              <div
-                className="modalPanel ddlModal"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <div className="modalHead">
-                  <h2>
+              <DialogContent className="w-[min(1240px,calc(100vw-3.5rem))] max-w-full overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>
                     {tableDetail.table?.schema
                       ? `${tableDetail.table.schema}.`
                       : ""}
                     {tableDetail.table?.name || "Table Detail"}
-                  </h2>
-                  <button
-                    className="iconButton"
-                    onClick={() => setShowTableDetail(false)}
-                    title="Close"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                <div className="ddlModalBody">
-                  <TableInspector detail={tableDetail} onToast={showToast} />
-                </div>
-              </div>
-            </div>
+                  </DialogTitle>
+                </DialogHeader>
+                <TableInspector detail={tableDetail} onToast={showToast} />
+              </DialogContent>
+            </Dialog>
           )}
 
         {!editingConnectionDetails &&
           workspaceView === "query" &&
           (result || explain) && (
             <section
-              className="workspace resultsWorkspace"
+              className="flex min-h-[160px] flex-1 flex-col"
               style={
                 resultsHeight
                   ? { flex: "0 0 auto", height: `${resultsHeight}px` }
@@ -2213,20 +2257,24 @@ function App() {
               }
             >
               <div
-                className="rowsResizer"
+                className="-mt-[3px] mb-[3px] h-1.5 flex-none cursor-row-resize rounded-full hover:bg-primary/60"
                 title="Drag to resize results"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setIsResizingResults(true);
                 }}
               />
-              <section className="content">
+              <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
                 {resultTabs.length > 1 && (
-                  <div className="resultTabs">
+                  <div className="flex flex-none items-center gap-0.5 overflow-x-auto rounded-lg border border-border bg-background p-[3px]">
                     {resultTabs.map((tab, index) => (
                       <button
                         key={index}
-                        className={index === activeResultTab ? "active" : ""}
+                        className={cn(
+                          "min-h-6 cursor-pointer rounded-md px-2.5 py-1 text-xs whitespace-nowrap text-muted-foreground",
+                          index === activeResultTab &&
+                            "bg-accent text-foreground",
+                        )}
                         title={tab.statement}
                         onClick={() => setActiveResultTab(index)}
                       >
@@ -2338,7 +2386,10 @@ function App() {
       />
       {aiPanelVisible && (
         <div
-          className={`aiPanel-resizer ${isResizingAi ? "resizing" : ""}`}
+          className={cn(
+            "absolute inset-y-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors",
+            isResizingAi && "bg-primary",
+          )}
           onMouseDown={(e) => {
             e.preventDefault();
             setIsResizingAi(true);
@@ -2352,16 +2403,17 @@ function App() {
         position="top-right"
         toastOptions={{
           style: {
-            background: "#171c23",
-            color: "#c8d0da",
-            border: "1px solid #35404d",
+            background: "var(--popover)",
+            color: "var(--popover-foreground)",
+            border: "1px solid var(--border)",
           },
           success: {
-            style: { borderColor: "#317d43" },
+            style: { borderColor: "oklch(0.696 0.17 162.48 / 0.6)" },
           },
         }}
       />
-    </div>
+      </div>
+      </TooltipProvider>
   );
 }
 

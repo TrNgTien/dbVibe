@@ -15,6 +15,11 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { api } from "../utils/api";
+import { Page, Panel, PanelHeader } from "../components/shared/layout";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect } from "@/components/ui/native-select";
+import { cn } from "@/lib/utils";
 
 const SUPPORTED_DRIVERS = ["mysql", "postgres", "timescaledb"];
 const NODE_W = 208;
@@ -89,6 +94,8 @@ function parseHeadline(head) {
     neverExecuted: /\(never executed\)/i.test(head),
     details: [],
     children: [],
+    kind: "op",
+    table: null,
   };
   // MySQL prints small numbers in scientific notation, e.g. time=42e-6..83e-6
   const NUM = "\\d+(?:\\.\\d+)?(?:e[+-]?\\d+)?";
@@ -563,7 +570,7 @@ function tokenizeSql(sql) {
 
 function clauseChips(sql) {
   const found = [];
-  const patterns = [
+  const patterns: [string, RegExp][] = [
     ["SELECT", /\bselect\b/i],
     ["FROM", /\bfrom\b/i],
     ["JOIN", /\bjoin\b/i],
@@ -614,13 +621,25 @@ function PlanNodeCard({ node, active, speed, resolution, reason, inspected, onIn
   }
   return (
     <div
-      className={`planNode ${active ? "active" : ""} kind-${node.kind}`}
+      className={cn(
+        "absolute min-h-[68px] rounded-lg border border-border bg-card px-2.5 py-2 opacity-40 transition-[opacity,border-color,box-shadow] duration-500",
+        active &&
+          "border-primary/50 opacity-100 shadow-[0_0_0_3px_oklch(0.922_0_0/0.09),0_8px_20px_oklch(0_0_0/0.3)]",
+      )}
       style={{ left: node.cx - NODE_W / 2, top: node.top, width: NODE_W }}
       title={node.label}
     >
-      <div className="planNodeHead">
-        <span className="planNodeKind">{KIND_LABEL[node.kind]}</span>
-        <span className="planNodeLabel">{node.label}</span>
+      <div className="mb-1.5 flex min-w-0 items-center gap-1.5">
+        <span
+          className={cn(
+            "flex-none rounded border border-primary/30 bg-primary/10 px-1 py-px text-[9.5px] font-bold tracking-wider text-primary",
+            node.kind === "scan" &&
+              "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+          )}
+        >
+          {KIND_LABEL[node.kind]}
+        </span>
+        <span className="truncate text-xs font-semibold">{node.label}</span>
       </div>
       {resolution &&
         (() => {
@@ -628,7 +647,13 @@ function PlanNodeCard({ node, active, speed, resolution, reason, inspected, onIn
           return (
             <button
               type="button"
-              className={`planNodeOpt ${resolution} ${inspected ? "inspected" : ""}`}
+              className={cn(
+                "mb-1.5 flex w-fit items-center gap-1 rounded px-1 py-px text-[9px] font-bold tracking-wider hover:brightness-125",
+                resolution === "cbo"
+                  ? "border border-primary/30 bg-primary/10 text-primary"
+                  : "border border-amber-400/30 bg-amber-400/10 text-amber-400",
+                inspected && "shadow-[0_0_0_2px_oklch(0.922_0_0/0.5)]",
+              )}
               title={reason}
               onClick={(e) => {
                 e.stopPropagation();
@@ -637,72 +662,86 @@ function PlanNodeCard({ node, active, speed, resolution, reason, inspected, onIn
             >
               <Icon size={10} />
               {label}
-              <span className="planNodeOptHint">calc</span>
+              <span className="font-normal lowercase opacity-55">calc</span>
             </button>
           );
         })()}
-      <div className="planNodeStats">
+      <div className="flex items-baseline gap-1.5 text-xs">
         {node.neverExecuted ? (
-          <span className="planNodeMuted">never executed</span>
+          <span className="text-[11px] text-muted-foreground/70">never executed</span>
         ) : target != null ? (
           <>
-            <span className="planNodeRows">{active ? formatRows(rows) : "–"}</span>
-            <span className="planNodeMuted">rows</span>
+            <span className="font-bold tabular-nums text-primary">
+              {active ? formatRows(rows) : "–"}
+            </span>
+            <span className="text-[11px] text-muted-foreground/70">rows</span>
             {node.loops > 1 && (
-              <span className="planNodeMuted">×{node.loops} loops</span>
+              <span className="text-[11px] text-muted-foreground/70">
+                ×{node.loops} loops
+              </span>
             )}
             {node.actualTotal != null && (
-              <span className="planNodeTime">
+              <span className="ml-auto text-[11px] tabular-nums text-muted-foreground">
                 {formatDuration(node.actualTotal)}
               </span>
             )}
           </>
         ) : (
-          <span className="planNodeMuted">
+          <span className="text-[11px] text-muted-foreground/70">
             est {est != null ? formatRows(est) : "?"} rows
           </span>
         )}
       </div>
       {est != null && actual != null && (
-        <div className="planNodeEstBars">
-          <i style={{ width: `${estBar}%` }} />
-          <i className="actual" style={{ width: active ? `${actBar}%` : 0 }} />
+        <div className="mt-1.5 grid gap-0.5">
+          <i className="block h-[3px] rounded bg-muted" style={{ width: `${estBar}%` }} />
+          <i
+            className="block h-[3px] rounded bg-primary transition-[width] duration-700 ease-[cubic-bezier(0.2,0.7,0.3,1)]"
+            style={{ width: active ? `${actBar}%` : 0 }}
+          />
         </div>
       )}
       {misestimate && active && (
-        <div className="planNodeWarn">
+        <div className="mt-1.5 flex items-center gap-1 overflow-hidden text-[10px] whitespace-nowrap text-amber-400">
           <AlertTriangle size={11} /> est {formatRows(est)} vs actual{" "}
           {formatRows(actual)}
         </div>
       )}
       {!misestimate && node.details[0] && (
-        <div className="planNodeDetail">{node.details[0]}</div>
+        <div className="mt-1.5 truncate text-[10px] text-muted-foreground/70">
+          {node.details[0]}
+        </div>
       )}
     </div>
   );
 }
 
-function DecisionCard({ decision, settled, compact, driverFamily }) {
+function DecisionCard({ decision, settled, compact = false, driverFamily }) {
   const maxCost = Math.max(...decision.candidates.map((c) => c.cost));
   if (compact) {
     const chosen = decision.candidates.find((c) => c.chosen);
     return (
-      <div className="decisionLogItem">
-        <Check size={12} />
-        <span>{decision.title}</span>
-        <b>{chosen?.name}</b>
+      <div className="flex animate-[token-in_0.3s_ease] items-center gap-1.5 rounded-md border border-border px-2 py-1.5 text-xs text-muted-foreground">
+        <Check size={12} className="flex-none text-emerald-400" />
+        <span className="min-w-0 truncate">{decision.title}</span>
+        <b className="ml-auto font-semibold whitespace-nowrap text-foreground">
+          {chosen?.name}
+        </b>
       </div>
     );
   }
   const { node } = decision;
   return (
-    <div className="decisionCard" key={decision.title + decision.node.label}>
-      <div className="decisionTitle">
+    <div
+      className="max-w-[640px] animate-[token-in_0.35s_ease] rounded-lg border border-primary/30 bg-background px-4 py-3.5"
+      key={decision.title + decision.node.label}
+    >
+      <div className="mb-3 font-semibold">
         {decision.title}
-        <span className="decisionOptBadge">
+        <span className="ml-2 inline-flex items-center gap-1 rounded px-1.5 py-0.5 align-middle text-[10px] font-bold tracking-wide border border-primary/30 bg-primary/10 text-primary">
           <Scale size={10} /> Cost-Based Optimizer
         </span>
-        <small>
+        <small className="mt-0.5 block text-xs font-normal text-muted-foreground">
           {DRIVER_COST_NOTE[driverFamily] ?? DRIVER_COST_NOTE.postgres}
         </small>
       </div>
@@ -712,51 +751,68 @@ function DecisionCard({ decision, settled, compact, driverFamily }) {
         return (
           <div
             key={candidate.name}
-            className={`candidateRow ${settled ? (candidate.chosen ? "won" : "lost") : ""}`}
+            className={cn(
+              "grid grid-cols-[150px_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-border/60 py-2 transition-opacity duration-500",
+              settled && !candidate.chosen && "opacity-40 [&_.candidate-name>span]:line-through",
+            )}
           >
-            <div className="candidateName">
+            <div className="flex items-center gap-1.5 text-[13px] font-semibold">
               {settled &&
-                (candidate.chosen ? <Check size={13} /> : <X size={13} />)}
-              <span>{candidate.name}</span>
+                (candidate.chosen ? (
+                  <Check size={13} className="flex-none text-emerald-400" />
+                ) : (
+                  <X size={13} className="flex-none text-muted-foreground" />
+                ))}
+              <span className="candidate-name">{candidate.name}</span>
             </div>
-            <div className="candidateTrack">
+            <div className="flex h-[18px] items-center">
               <div
-                className="candidateBar io"
+                className={cn(
+                  "h-2 animate-[bar-grow_1.1s_cubic-bezier(0.2,0.7,0.3,1)_backwards]",
+                  "rounded-l bg-muted-foreground/25",
+                  settled && candidate.chosen && "bg-primary",
+                )}
                 style={{ width: `${Math.max(1, ioW)}%` }}
                 title={`page I/O ${formatCost(candidate.io)}`}
               />
               <div
-                className="candidateBar cpu"
+                className={cn(
+                  "h-2 animate-[bar-grow_1.1s_cubic-bezier(0.2,0.7,0.3,1)_backwards]",
+                  "rounded-r bg-muted-foreground/15",
+                  settled && candidate.chosen && "bg-violet-400",
+                )}
                 style={{ width: `${Math.max(1, cpuW)}%` }}
                 title={`row CPU ${formatCost(candidate.cpu)}`}
               />
-              <span className="candidateCost">
+              <span className="ml-2 text-[11.5px] whitespace-nowrap text-muted-foreground tabular-nums">
                 {formatCost(candidate.cost)}
-                {!candidate.chosen && <em> est.</em>}
+                {!candidate.chosen && <em className="not-italic text-muted-foreground/60"> est.</em>}
               </span>
             </div>
-            <div className="candidateBreakdown">
-              <span className="pillar io">
-                <i /> I/O {formatCost(candidate.io)}
+            <div className="col-start-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-foreground tabular-nums">
+              <span className="inline-flex items-center gap-1.5">
+                <i className="size-2 rounded-sm bg-primary" /> I/O {formatCost(candidate.io)}
               </span>
-              <span className="pillar cpu">
-                <i /> CPU {formatCost(candidate.cpu)}
+              <span className="inline-flex items-center gap-1.5">
+                <i className="size-2 rounded-sm bg-violet-400" /> CPU {formatCost(candidate.cpu)}
               </span>
-              <span className="pillarRows">
+              <span className="text-muted-foreground/70">
                 examines {formatRows(candidate.examined)} → returns{" "}
                 {formatRows(candidate.returned)} rows
               </span>
             </div>
-            <div className="candidateFormula">
+            <div className="col-start-2 mt-0.5 flex flex-col gap-0.5 text-[10px] text-muted-foreground/70 tabular-nums">
               <span>I/O = {candidate.ioFormula}</span>
               <span>CPU = {candidate.cpuFormula}</span>
               {candidate.cpuNote && (
-                <span className="formulaNote">{candidate.cpuNote}</span>
+                <span className="text-indigo-400">{candidate.cpuNote}</span>
               )}
             </div>
-            <div className="candidateReason">{candidate.reason}</div>
+            <div className="col-start-2 text-[11.5px] leading-snug text-muted-foreground/70">
+              {candidate.reason}
+            </div>
             {candidate.chosen ? (
-              <div className="candidateMeta">
+              <div className="col-start-2 mt-0.5 flex gap-3 text-[10.5px] text-primary tabular-nums">
                 {node.costStart != null && (
                   <span>
                     DB estimate: startup {node.costStart.toFixed(2)} → total{" "}
@@ -768,7 +824,7 @@ function DecisionCard({ decision, settled, compact, driverFamily }) {
                 )}
               </div>
             ) : (
-              <div className="candidateMeta muted">
+              <div className="col-start-2 mt-0.5 text-[10.5px] text-muted-foreground/70 italic">
                 modeled from the same rows — EXPLAIN only reports the winner, so
                 this is priced with the io + cpu cost model, not measured
               </div>
@@ -777,7 +833,7 @@ function DecisionCard({ decision, settled, compact, driverFamily }) {
         );
       })}
       {settled && (
-        <div className="decisionVerdict">
+        <div className="mt-2.5 flex animate-[token-in_0.3s_ease] items-center gap-1.5 text-xs text-emerald-400">
           <Check size={12} /> lowest total of the two pillars (page I/O + row
           CPU) wins — this is what distinguishes a cost-based optimizer from a
           rule-based one, which would apply a fixed heuristic (e.g. "always
@@ -1114,88 +1170,102 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
       }
     : null;
 
+  const inlineCode = "rounded bg-muted px-1 py-px font-mono text-[11px] text-primary";
+
   return (
-    <section className="optimizerPage">
-      <section className="panel optimizerPanel">
-        <div className="panelHead">
-          <div>
-            <span>Query Optimizer Lab</span>
-            <small>
-              Watch how {connection?.driver === "mysql" ? "MySQL" : "PostgreSQL"}{" "}
-              parses, plans, and executes your query — powered by a real{" "}
-              <code>EXPLAIN ANALYZE</code> run.
-            </small>
-          </div>
-          <div className="optimizerControls">
-            <select
-              value={speed}
-              onChange={(e) => setSpeed(Number(e.target.value))}
-              title="Animation speed"
-            >
-              <option value={0.5}>0.5×</option>
-              <option value={1}>1×</option>
-              <option value={2}>2×</option>
-            </select>
-            <button
-              onClick={stepBack}
-              disabled={!plan || phase === "idle" || phase === "parse"}
-              title="Step back"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <button
-              onClick={() => setPaused((p) => !p)}
-              disabled={!running || phase === "done" || phase === "idle"}
-              title={paused ? "Resume auto-play" : "Pause"}
-            >
-              {paused ? <Play size={14} /> : <Pause size={14} />}
-            </button>
-            <button
-              onClick={stepForward}
-              disabled={!plan || phase === "idle" || phase === "done"}
-              title="Step forward"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <button
-              onClick={() => jumpTo("parse", true)}
-              disabled={!plan}
-              title="Replay animation"
-            >
-              <RotateCcw size={14} /> Replay
-            </button>
-          </div>
-        </div>
+    <Page>
+      <Panel>
+        <PanelHeader
+          className="flex-wrap"
+          title={
+            <span>
+              Query Optimizer Lab
+              <span className="block text-xs font-normal text-muted-foreground">
+                Watch how{" "}
+                {connection?.driver === "mysql" ? "MySQL" : "PostgreSQL"}{" "}
+                parses, plans, and executes your query — powered by a real{" "}
+                <code className={inlineCode}>EXPLAIN ANALYZE</code> run.
+              </span>
+            </span>
+          }
+          actions={
+            <div className="flex flex-none items-center gap-1.5">
+              <NativeSelect
+                size="sm"
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
+                title="Animation speed"
+              >
+                <option value={0.5}>0.5×</option>
+                <option value={1}>1×</option>
+                <option value={2}>2×</option>
+              </NativeSelect>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={stepBack}
+                disabled={!plan || phase === "idle" || phase === "parse"}
+                title="Step back"
+              >
+                <ChevronLeft />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPaused((p) => !p)}
+                disabled={!running || phase === "done" || phase === "idle"}
+                title={paused ? "Resume auto-play" : "Pause"}
+              >
+                {paused ? <Play /> : <Pause />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={stepForward}
+                disabled={!plan || phase === "idle" || phase === "done"}
+                title="Step forward"
+              >
+                <ChevronRight />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => jumpTo("parse", true)}
+                disabled={!plan}
+                title="Replay animation"
+              >
+                <RotateCcw data-icon="inline-start" /> Replay
+              </Button>
+            </div>
+          }
+        />
 
         {!supported ? (
-          <div className="optimizerEmpty">
-            Plan visualization needs <code>EXPLAIN ANALYZE</code>, which is
+          <div className="m-auto max-w-[460px] p-12 text-center leading-relaxed text-muted-foreground">
+            Plan visualization needs <code className={inlineCode}>EXPLAIN ANALYZE</code>, which is
             available for MySQL, PostgreSQL, and TimescaleDB connections.
           </div>
         ) : (
           <>
-            <div className="optimizerInput">
-              <textarea
+            <div className="flex gap-2.5 px-3.5 pt-3">
+              <Textarea
                 value={sql}
                 spellCheck={false}
                 rows={3}
                 placeholder="SELECT ... — the statement to explain and animate"
+                className="min-h-[58px] flex-1 resize-y font-mono text-xs"
                 onChange={(e) => {
                   dirtyRef.current = true;
                   setSql(e.target.value);
                 }}
               />
-              <div className="optimizerInputSide">
-                <button
-                  className="primary"
-                  onClick={visualize}
-                  disabled={loading || !sql.trim()}
-                >
-                  <Play size={14} />
+              <div className="flex w-[190px] flex-col gap-1.5">
+                <Button onClick={visualize} disabled={loading || !sql.trim()}>
+                  <Play data-icon="inline-start" />
                   {loading ? "Explaining…" : "Run & Visualize"}
-                </button>
+                </Button>
                 {mutating && (
-                  <span className="optimizerCaution">
+                  <span className="inline-flex items-center gap-1 text-[11.5px] leading-snug text-amber-400">
                     <AlertTriangle size={12} /> EXPLAIN ANALYZE really executes
                     this statement
                   </span>
@@ -1203,31 +1273,48 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               </div>
             </div>
 
-
-            <div className="optimizerStages">
+            <div className="flex items-center gap-2 px-3.5 pt-3">
               {PHASES.map((p, idx) => (
-                <button
+                <Button
                   key={p}
-                  className={`stageChip ${phase === p ? "current" : ""} ${
-                    phaseIndex > idx || phase === "done" ? "passed" : ""
-                  }`}
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "gap-2 rounded-full pr-3.5 pl-2 text-xs",
+                    phase === p && "border-primary text-foreground animate-[stage-pulse_1.6s_ease-in-out_infinite]",
+                    phaseIndex > idx || phase === "done"
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
                   disabled={!plan}
                   onClick={() => jumpTo(p)}
                 >
-                  <i>{idx + 1}</i>
+                  <i
+                    className={cn(
+                      "flex size-[18px] flex-none items-center justify-center rounded-full text-[11px] not-italic",
+                      phase === p
+                        ? "bg-primary text-primary-foreground"
+                        : phaseIndex > idx || phase === "done"
+                          ? "bg-emerald-500/15 text-emerald-400"
+                          : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {idx + 1}
+                  </i>
                   {PHASE_LABEL[p]}
-                </button>
+                </Button>
               ))}
               {paused && running && phase !== "idle" && phase !== "done" && (
-                <span className="pausedHint">
-                  <Pause size={11} /> paused — step with ‹ › or press play
+                <span className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+                  <Pause size={11} className="text-amber-400" /> paused — step
+                  with ‹ › or press play
                 </span>
               )}
             </div>
 
-            <div className="optimizerCanvas">
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto p-3.5 pb-4">
               {phase === "idle" && (
-                <div className="optimizerEmpty">
+                <div className="m-auto max-w-[460px] p-12 text-center leading-relaxed text-muted-foreground">
                   Run a query to see the whole journey: SQL → parse tree →
                   optimizer decisions → executing plan with rows flowing
                   through it.
@@ -1235,34 +1322,38 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               )}
 
               {phase === "parse" && (
-                <div className="parseStage">
-                  <div className="stageHint">
+                <div className="flex flex-col">
+                  <div className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
                     The parser tokenizes your SQL and builds a syntax tree — no
                     data is touched yet.
                   </div>
-                  <div className="tokenStream">
+                  <div className="flex max-w-[760px] flex-wrap gap-1.5">
                     {tokens.map((token, i) => (
                       <span
                         key={`${token}-${i}`}
-                        className={
-                          SQL_KEYWORDS.has(token.toLowerCase())
-                            ? "token keyword"
-                            : "token"
-                        }
+                        className={cn(
+                          "animate-[token-in_0.35s_ease_forwards] rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs opacity-0",
+                          SQL_KEYWORDS.has(token.toLowerCase()) &&
+                            "border-primary/30 bg-primary/10 text-primary",
+                        )}
                         style={{ animationDelay: `${(i * 45) / speed}ms` }}
                       >
                         {token}
                       </span>
                     ))}
                   </div>
-                  <div className="parseArrow">↓</div>
-                  <div className="clauseTree">
-                    <span className="clauseRoot">Query</span>
-                    <div className="clauseChildren">
+                  <div className="mx-6 my-3 animate-[token-in_0.4s_ease_0.5s_backwards] text-xl text-primary">
+                    ↓
+                  </div>
+                  <div className="flex items-start gap-3.5">
+                    <span className="animate-[token-in_0.4s_ease_0.55s_backwards] rounded-lg bg-primary px-3.5 py-1.5 text-[13px] font-semibold text-primary-foreground">
+                      Query
+                    </span>
+                    <div className="flex flex-wrap gap-2 pt-0.5">
                       {clauses.map((clause, i) => (
                         <span
                           key={clause}
-                          className="clauseChip"
+                          className="animate-[token-in_0.4s_ease_forwards] rounded-md border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary opacity-0"
                           style={{
                             animationDelay: `${(600 + i * 160) / speed}ms`,
                           }}
@@ -1276,20 +1367,33 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               )}
 
               {phase === "rewrite" && (
-                <div className="rewriteStage">
-                  <div className="stageHint">
+                <div className="max-w-[460px]">
+                  <div className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
                     The rewriter applies standard transformations before any
                     plan is considered.
                   </div>
                   {REWRITE_PASSES.map((pass, i) => (
                     <div
                       key={pass}
-                      className={`rewritePass ${i < rewriteStep ? "doneP" : i === rewriteStep ? "activeP" : ""}`}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-lg border border-transparent px-3 py-2 text-[13px] transition-colors duration-300",
+                        i < rewriteStep
+                          ? "text-foreground"
+                          : i === rewriteStep
+                            ? "border-primary/30 bg-primary/10 text-foreground"
+                            : "text-muted-foreground/70",
+                      )}
                     >
                       {i < rewriteStep ? (
-                        <Check size={13} />
+                        <Check size={13} className="flex-none text-emerald-400" />
                       ) : (
-                        <span className="rewriteDot" />
+                        <span
+                          className={cn(
+                            "size-[13px] flex-none rounded-full border-2 border-border",
+                            i === rewriteStep &&
+                              "border-primary animate-[stage-pulse_1s_ease-in-out_infinite]",
+                          )}
+                        />
                       )}
                       {pass}
                     </div>
@@ -1298,19 +1402,19 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               )}
 
               {phase === "plan" && !decisions.length && (
-                <div className="planStage">
-                  <div className="stageHint">
+                <div className="flex flex-col">
+                  <div className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
                     Nothing to weigh here: the optimizer resolved this query
                     without cost-based choices.
                   </div>
-                  <div className="decisionCard">
-                    <div className="decisionTitle">
+                  <div className="max-w-[640px] rounded-lg border border-primary/30 bg-background px-4 py-3.5">
+                    <div className="mb-3 font-semibold">
                       Constant lookup
-                      <span className="decisionOptBadge rule">
+                      <span className="ml-2 inline-flex items-center gap-1 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 align-middle text-[10px] font-bold tracking-wide text-amber-400">
                         <Workflow size={10} /> Rule-Based Shortcut
                       </span>
-                      <small>
-                        A unique-key equality (like <code>WHERE id = …</code>)
+                      <small className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        A unique-key equality (like <code className={inlineCode}>WHERE id = …</code>)
                         pins down at most one row, so the row is fetched during
                         optimization itself — there are no alternative access
                         paths or join orders to compare. This is a fixed rule
@@ -1323,23 +1427,23 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               )}
 
               {phase === "plan" && decisions[decisionStep] && (
-                <div className="planStage">
-                  <div className="stageHint">
+                <div className="flex flex-col">
+                  <div className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
                     Bottom-up, the optimizer prices every strategy for each
                     table and join, keeping the cheapest at each step — this
                     is cost-based optimization (CBO). Steps with only one
-                    possible shape (a <code>LIMIT</code>, a filter, a
+                    possible shape (a <code className={inlineCode}>LIMIT</code>, a filter, a
                     unique-key lookup) skip pricing entirely and are marked{" "}
-                    <b>RULE</b> instead.
-                    <em>
+                    <b className="font-semibold text-foreground">RULE</b> instead.
+                    <em className="not-italic text-muted-foreground/70">
                       {" "}
                       Rejected costs are illustrative — the database only
                       reports the winner.
                     </em>
                   </div>
-                  <div className="planStageBody">
-                    <div className="decisionLog">
-                      <div className="decisionLogTitle">
+                  <div className="grid grid-cols-[250px_minmax(0,1fr)] items-start gap-3.5">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="mb-1 text-xs text-muted-foreground">
                         Decision {decisionStep + 1} of {decisions.length}
                       </div>
                       {decisions.slice(0, decisionStep).map((d, i) => (
@@ -1362,33 +1466,40 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
               )}
 
               {executing && layout && (
-                <div className="executeStage">
-                  <div className="stageHint">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
                     {phase === "execute"
                       ? "Executors pull rows demand-driven: each node asks its children for the next row — leaves feed data upward."
                       : "Execution finished — pulses show the measured row flow."}
                   </div>
-                  <div className="planTreeWrap">
-                    <div className="planTreeTools">
-                      <button
+                  <div className="relative flex min-h-0 flex-1 flex-col">
+                    <div className="absolute top-2 right-2 z-[5] flex items-center gap-0.5 rounded-lg border border-border bg-background/90 p-0.5 backdrop-blur-sm">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         title="Zoom out"
                         onClick={() => setZoom((z) => clampZoom(z / 1.2))}
                       >
-                        <ZoomOut size={13} />
-                      </button>
-                      <span className="planTreeZoomLabel">
+                        <ZoomOut className="size-3.5" />
+                      </Button>
+                      <span className="min-w-9 text-center text-[11px] tabular-nums text-muted-foreground">
                         {Math.round(zoom * 100)}%
                       </span>
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         title="Zoom in"
                         onClick={() => setZoom((z) => clampZoom(z * 1.2))}
                       >
-                        <ZoomIn size={13} />
-                      </button>
+                        <ZoomIn className="size-3.5" />
+                      </Button>
                     </div>
-                    <div className="planTreeScroll" ref={treeScrollRef}>
+                    <div
+                      className="flex min-h-0 flex-1 cursor-grab overflow-auto rounded-lg border border-border bg-[radial-gradient(circle_at_1px_1px,oklch(1_0_0/0.06)_1px,transparent_0)] bg-[size:22px_22px]"
+                      ref={treeScrollRef}
+                    >
                       <div
-                        className="planTreeZoom"
+                        className="m-auto flex-none"
                         style={{
                           width: layout.width * zoom,
                           height: layout.height * zoom,
@@ -1396,7 +1507,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                         }}
                       >
                         <div
-                          className="planTree"
+                          className="relative"
                           style={{
                             width: layout.width,
                             height: layout.height,
@@ -1404,92 +1515,99 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                             transformOrigin: "0 0",
                           }}
                         >
-                      <svg
-                        width={layout.width}
-                        height={layout.height}
-                        className="planEdges"
-                      >
-                        {layout.edges.map((edge, i) => {
-                          const x1 = edge.from.cx;
-                          const y1 = edge.from.top;
-                          const x2 = edge.to.cx;
-                          const y2 = edge.to.top + NODE_H;
-                          const my = (y1 + y2) / 2;
-                          const path = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
-                          const active =
-                            phase === "done" ||
-                            edge.from.order < execStep;
-                          const dots = active
-                            ? Math.min(
-                                4,
-                                1 +
-                                  Math.floor(
-                                    Math.log10(
-                                      (edge.from.actualRows ?? 0) * edge.from.loops + 1,
-                                    ) / 2,
-                                  ),
-                              )
-                            : 0;
-                          const dur = `${(1.5 / speed).toFixed(2)}s`;
-                          return (
-                            <g key={i}>
-                              <path
-                                d={path}
-                                className={`planEdge ${active ? "active" : ""}`}
-                              />
-                              {Array.from({ length: dots }).map((_, d) => (
-                                <circle
-                                  key={d}
-                                  r="3.4"
-                                  className="rowDot"
-                                >
-                                  <animateMotion
-                                    dur={dur}
-                                    repeatCount="indefinite"
-                                    begin={`${(d * 1.5) / dots / speed}s`}
-                                    path={path}
+                          <svg
+                            width={layout.width}
+                            height={layout.height}
+                            className="absolute inset-0 overflow-visible"
+                          >
+                            {layout.edges.map((edge, i) => {
+                              const x1 = edge.from.cx;
+                              const y1 = edge.from.top;
+                              const x2 = edge.to.cx;
+                              const y2 = edge.to.top + NODE_H;
+                              const my = (y1 + y2) / 2;
+                              const path = `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`;
+                              const active =
+                                phase === "done" ||
+                                edge.from.order < execStep;
+                              const dots = active
+                                ? Math.min(
+                                    4,
+                                    1 +
+                                      Math.floor(
+                                        Math.log10(
+                                          (edge.from.actualRows ?? 0) * edge.from.loops + 1,
+                                        ) / 2,
+                                      ),
+                                  )
+                                : 0;
+                              const dur = `${(1.5 / speed).toFixed(2)}s`;
+                              return (
+                                <g key={i}>
+                                  <path
+                                    d={path}
+                                    className={cn(
+                                      "fill-none stroke-border stroke-[1.6] transition-[stroke] duration-500",
+                                      active && "stroke-primary/50",
+                                    )}
                                   />
-                                </circle>
-                              ))}
-                            </g>
-                          );
-                        })}
-                      </svg>
-                      {layout.nodes.map((node, i) => {
-                        const resolution = nodeResolution(node, decisionsByNode);
-                        return (
-                          <PlanNodeCard
-                            key={i}
-                            node={node}
-                            speed={speed}
-                            active={phase === "done" || node.order < execStep}
-                            resolution={resolution}
-                            reason={
-                              resolution === "cbo"
-                                ? cboCalculation(decisionsByNode.get(node))
-                                : ruleReason(node, driverFamily)
-                            }
-                            inspected={inspectedNode === node}
-                            onInspect={() =>
-                              setInspectedNode((cur) => (cur === node ? null : node))
-                            }
-                          />
-                        );
-                      })}
+                                  {Array.from({ length: dots }).map((_, d) => (
+                                    <circle
+                                      key={d}
+                                      r="3.4"
+                                      className="fill-primary"
+                                    >
+                                      <animateMotion
+                                        dur={dur}
+                                        repeatCount="indefinite"
+                                        begin={`${(d * 1.5) / dots / speed}s`}
+                                        path={path}
+                                      />
+                                    </circle>
+                                  ))}
+                                </g>
+                              );
+                            })}
+                          </svg>
+                          {layout.nodes.map((node, i) => {
+                            const resolution = nodeResolution(node, decisionsByNode);
+                            return (
+                              <PlanNodeCard
+                                key={i}
+                                node={node}
+                                speed={speed}
+                                active={phase === "done" || node.order < execStep}
+                                resolution={resolution}
+                                reason={
+                                  resolution === "cbo"
+                                    ? cboCalculation(decisionsByNode.get(node))
+                                    : ruleReason(node, driverFamily)
+                                }
+                                inspected={inspectedNode === node}
+                                onInspect={() =>
+                                  setInspectedNode((cur) => (cur === node ? null : node))
+                                }
+                              />
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
                     {inspectedNode && (
-                      <div className="nodeCalcPanel" ref={nodeCalcPanelRef}>
-                        <div className="nodeCalcPanelHead">
-                          <b>{inspectedNode.label}</b>
-                          <button
+                      <div
+                        className="absolute bottom-3 left-3 z-[6] max-h-[min(70%,480px)] w-[min(420px,calc(100%-24px))] animate-[token-in_0.2s_ease] overflow-y-auto rounded-lg border border-primary/30 bg-popover/95 p-3 shadow-xl backdrop-blur-sm"
+                        ref={nodeCalcPanelRef}
+                      >
+                        <div className="mb-2.5 flex items-center gap-2 border-b border-border pb-2 text-[13px]">
+                          <b className="min-w-0 flex-1 truncate">{inspectedNode.label}</b>
+                          <Button
                             type="button"
-                            className="nodeCalcClose"
+                            variant="ghost"
+                            size="icon-sm"
                             onClick={() => setInspectedNode(null)}
                           >
-                            <X size={13} />
-                          </button>
+                            <X className="size-3.5" />
+                          </Button>
                         </div>
                         {decisionsByNode.has(inspectedNode) ? (
                           <DecisionCard
@@ -1498,15 +1616,15 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                             driverFamily={driverFamily}
                           />
                         ) : (
-                          <div className="decisionCard">
-                            <div className="decisionTitle">
+                          <div className="rounded-lg border border-primary/30 bg-background px-4 py-3.5">
+                            <div className="mb-3 font-semibold">
                               How this step was placed
-                              <span className="decisionOptBadge rule">
+                              <span className="ml-2 inline-flex items-center gap-1 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 align-middle text-[10px] font-bold tracking-wide text-amber-400">
                                 <Workflow size={10} /> Rule-Applied — no CBO
                                 pricing
                               </span>
                             </div>
-                            <p className="nodeCalcRuleText">
+                            <p className="m-0 text-xs leading-relaxed text-muted-foreground">
                               {ruleReason(inspectedNode, driverFamily)}
                             </p>
                           </div>
@@ -1515,33 +1633,41 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
                     )}
                   </div>
                   {phase === "done" && summary && (
-                    <div className="executeSummary">
-                      <div>
-                        <small>Planning</small>
-                        <b>
+                    <div className="mt-3 flex animate-[token-in_0.4s_ease] gap-2.5">
+                      <div className="min-w-[110px] rounded-lg border border-border bg-card px-3.5 py-2">
+                        <small className="mb-0.5 block text-[11px] text-muted-foreground">
+                          Planning
+                        </small>
+                        <b className="block truncate text-sm font-semibold">
                           {summary.planning != null
                             ? formatDuration(summary.planning)
                             : "—"}
                         </b>
                       </div>
-                      <div>
-                        <small>Execution</small>
-                        <b>
+                      <div className="min-w-[110px] rounded-lg border border-border bg-card px-3.5 py-2">
+                        <small className="mb-0.5 block text-[11px] text-muted-foreground">
+                          Execution
+                        </small>
+                        <b className="block truncate text-sm font-semibold">
                           {summary.execution != null
                             ? formatDuration(summary.execution)
                             : "—"}
                         </b>
                       </div>
-                      <div>
-                        <small>Rows out</small>
-                        <b>
+                      <div className="min-w-[110px] rounded-lg border border-border bg-card px-3.5 py-2">
+                        <small className="mb-0.5 block text-[11px] text-muted-foreground">
+                          Rows out
+                        </small>
+                        <b className="block truncate text-sm font-semibold">
                           {summary.rows != null ? formatRows(summary.rows) : "—"}
                         </b>
                       </div>
                       {summary.slowest && (
-                        <div className="wide">
-                          <small>Slowest node</small>
-                          <b>
+                        <div className="min-w-0 flex-1 rounded-lg border border-border bg-card px-3.5 py-2">
+                          <small className="mb-0.5 block text-[11px] text-muted-foreground">
+                            Slowest node
+                          </small>
+                          <b className="block truncate text-sm font-semibold">
                             {summary.slowest.label} ·{" "}
                             {formatDuration(summary.slowest.actualTotal)}
                           </b>
@@ -1554,7 +1680,7 @@ export function QueryOptimizerPage({ connection, database, sqlText }) {
             </div>
           </>
         )}
-      </section>
-    </section>
+      </Panel>
+    </Page>
   );
 }

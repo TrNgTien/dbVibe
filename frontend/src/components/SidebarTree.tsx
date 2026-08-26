@@ -20,6 +20,13 @@ import {
 import { DriverLogo, StatusDot } from "./common";
 import { driverLabel, normalizeObjectType } from "../utils/api";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+const treeItemClasses =
+  "flex min-h-[31px] w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground";
 
 export function ConnectionContextMenu({
   menu,
@@ -34,46 +41,89 @@ export function ConnectionContextMenu({
 }) {
   return (
     <div
-      className="contextMenu"
+      className="fixed z-50 w-[190px] max-w-[280px] min-w-max rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-2xl"
       style={{ left: menu.x, top: menu.y }}
       onClick={(event) => event.stopPropagation()}
     >
-      <button onClick={onCopyConnectionString}>
-        <Copy size={15} /> Copy connection string
-      </button>
-      <button onClick={onTogglePin}>
-        {menu.conn.isPinned ? <PinOff size={15} /> : <Pin size={15} />}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
+        onClick={onCopyConnectionString}
+      >
+        <Copy data-icon="inline-start" className="size-3.5" /> Copy connection
+        string
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
+        onClick={onTogglePin}
+      >
+        {menu.conn.isPinned ? (
+          <PinOff data-icon="inline-start" className="size-3.5" />
+        ) : (
+          <Pin data-icon="inline-start" className="size-3.5" />
+        )}
         {menu.conn.isPinned ? "Unpin" : "Pin"}
-      </button>
-      <button onClick={onEditConnection}>
-        <Pencil size={15} /> Edit connection
-      </button>
-      <button onClick={onCloseConnection} disabled={!connected}>
-        <PowerOff size={15} /> Close connection
-      </button>
-      <button onClick={onDeleteConnection}>
-        <Trash2 size={15} /> Delete connection
-      </button>
-      <div className="contextMenuDivider" />
-      <div className="contextMenuLabel">Move to workspace</div>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
+        onClick={onEditConnection}
+      >
+        <Pencil data-icon="inline-start" className="size-3.5" /> Edit connection
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
+        onClick={onCloseConnection}
+        disabled={!connected}
+      >
+        <PowerOff data-icon="inline-start" className="size-3.5" /> Close
+        connection
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
+        onClick={onDeleteConnection}
+      >
+        <Trash2 data-icon="inline-start" className="size-3.5" /> Delete
+        connection
+      </Button>
+      <div className="my-1 h-px bg-border" />
+      <div className="px-2.5 py-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+        Move to workspace
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start px-2.5 py-1.5 font-normal"
         onClick={() => onMoveToWorkspace(menu.conn, "")}
         disabled={!menu.conn.workspaceId}
       >
-        {menu.conn.workspaceId ? "" : <span className="moveCheck">✓</span>}
+        {!menu.conn.workspaceId && (
+          <Check className="w-[15px] flex-none text-primary" />
+        )}
         Ungrouped
-      </button>
+      </Button>
       {(workspaces || []).map((ws) => (
-        <button
+        <Button
           key={ws.id}
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start px-2.5 py-1.5 font-normal"
           onClick={() => onMoveToWorkspace(menu.conn, ws.id)}
           disabled={menu.conn.workspaceId === ws.id}
         >
-          {menu.conn.workspaceId === ws.id ? (
-            <span className="moveCheck">✓</span>
-          ) : null}
+          {menu.conn.workspaceId === ws.id && (
+            <Check className="w-[15px] flex-none text-primary" />
+          )}
           {ws.name}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -155,36 +205,32 @@ export function SidebarTree({
     );
 
     return (
-      <div
-        key={conn.id}
-        className={`treeBranch ${isChecked ? "rowSelected" : ""}`}
-      >
+      <div key={conn.id} className={cn("flex flex-col", isChecked && "[&>div]:bg-accent")}>
         <div
-          className={`treeItem connectionItem ${selected?.id === conn.id ? "active" : ""}`}
+          className={cn(
+            "flex min-h-8 items-center rounded-md px-1",
+            selected?.id === conn.id && "bg-accent",
+          )}
           onContextMenu={(event) => onContextMenu(event, conn)}
         >
           {selectionMode && (
             <span
-              className={`connCheckbox ${isChecked ? "checked" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-label={`Toggle select ${conn.name}`}
+              className="flex size-4 flex-none cursor-pointer items-center justify-center"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleConnSelected(conn);
               }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onToggleConnSelected(conn);
-                }
-              }}
             >
-              {isChecked && <Check size={12} />}
+              <Checkbox
+                checked={isChecked}
+                onCheckedChange={() => onToggleConnSelected(conn)}
+                aria-label={`Toggle select ${conn.name}`}
+                className="size-4"
+              />
             </span>
           )}
           <span
-            className="treeChevron connectionChevron"
+            className="flex size-6 flex-none cursor-pointer items-center justify-center rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             role="button"
             tabIndex={0}
             aria-expanded={isExpanded}
@@ -206,31 +252,39 @@ export function SidebarTree({
           </span>
           <button
             type="button"
-            className="connectionSelect"
+            className="flex min-w-0 flex-1 items-center justify-start gap-2 text-left"
             onClick={() =>
               selectionMode
                 ? onToggleConnSelected(conn)
                 : onSelectConnection(conn)
             }
           >
-            <span className="connectionName">
+            <span className="flex min-w-0 items-center gap-1.5 font-medium">
               <StatusDot
                 status={isConnected ? "connected" : "disconnected"}
               />
-              <DriverLogo driver={conn.driver} />
-              {conn.name}
+              <DriverLogo driver={conn.driver} size={16} />
+              <span className="truncate">{conn.name}</span>
               {conn.isPinned && (
-                <Pin size={12} fill="currentColor" className="pinIcon" />
+                <Pin
+                  size={12}
+                  fill="currentColor"
+                  className="flex-none text-muted-foreground"
+                />
               )}
             </span>
-            <small>{driverLabel(conn.driver)}</small>
+            <small className="ml-auto flex-none text-xs text-muted-foreground">
+              {driverLabel(conn.driver)}
+            </small>
           </button>
         </div>
 
         {isExpanded && (
-          <div className="treeChildren connectionChildren">
+          <div className="ml-3.5 flex flex-col border-l border-border pl-2">
             {(!detail || !isConnected) && (
-              <div className="treeEmpty">Loading...</div>
+              <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                Loading...
+              </div>
             )}
             {detail && isConnected && (
               <ConnectionTreeInner
@@ -259,18 +313,18 @@ export function SidebarTree({
   };
 
   return (
-    <div className="objectTree sidebarTree">
+    <div className="flex flex-col gap-0.5 overflow-auto p-2.5">
       {groups.map((group) => {
         const expanded = group.isUngrouped
           ? true
           : !!expandedWorkspaces[group.id];
         return (
-          <div
-            key={group.id || "ungrouped"}
-            className="treeBranch workspaceGroup"
-          >
+          <div key={group.id || "ungrouped"} className="flex flex-col">
             <div
-              className="workspaceHeader"
+              className={cn(
+                "flex min-h-[30px] items-center gap-2 rounded-md px-2 py-1 text-sm font-semibold text-foreground",
+                !group.isUngrouped && "cursor-pointer hover:bg-muted",
+              )}
               role={group.isUngrouped ? undefined : "button"}
               tabIndex={group.isUngrouped ? undefined : 0}
               aria-expanded={group.isUngrouped ? undefined : expanded}
@@ -291,9 +345,9 @@ export function SidebarTree({
               }
             >
               {group.isUngrouped ? (
-                <span className="treeChevron" />
+                <span className="flex size-4 flex-none items-center justify-center text-muted-foreground" />
               ) : (
-                <span className="treeChevron">
+                <span className="flex size-4 flex-none items-center justify-center text-muted-foreground">
                   {expanded ? (
                     <ChevronDown size={14} />
                   ) : (
@@ -301,37 +355,42 @@ export function SidebarTree({
                   )}
                 </span>
               )}
-              <span className="workspaceName">{group.name}</span>
-              <small>{group.connections.length}</small>
+              <span className="min-w-0 flex-1 truncate">{group.name}</span>
+              <small className="flex-none text-xs text-muted-foreground">
+                {group.connections.length}
+              </small>
               {!group.isUngrouped && (
-                <span className="workspaceActions">
+                <span className="flex flex-none gap-0.5">
                   {group.connections.length > 0 && (
-                    <button
-                      className="iconButton"
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-[22px]"
                       title="Export workspace"
                       onClick={(e) => {
                         e.stopPropagation();
                         onExportWorkspace(group.id);
                       }}
                     >
-                      <Upload size={13} />
-                    </button>
+                      <Upload className="size-3.5" />
+                    </Button>
                   )}
-                  <button
-                    className="iconButton"
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-[22px]"
                     title="Delete workspace"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDeleteWorkspace(group.id);
                     }}
                   >
-                    <Trash2 size={13} />
-                  </button>
+                    <Trash2 className="size-3.5" />
+                  </Button>
                 </span>
               )}
             </div>
-            {expanded &&
-              group.connections.map((conn) => renderConnection(conn))}
+            {expanded && group.connections.map((conn) => renderConnection(conn))}
           </div>
         );
       })}
@@ -347,22 +406,41 @@ function IndexRow({ index, deep }) {
   const kind = isPrimary ? "primary" : index.unique ? "unique" : "index";
   return (
     <div
-      className="treeItem indexItem"
+      className={cn(treeItemClasses, "cursor-default hover:bg-transparent")}
       title={`${kind}${columnCount > 1 ? ` · composite (${columnCount} columns)` : ""} on ${index.table} (${index.columns})`}
     >
-      <div className="treeIndent" />
-      {deep && <div className="treeIndent" />}
-      <KeyRound size={14} className={`indexIcon ${kind}`} />
-      <span className="treeKeyLabel">
+      <div className="w-[15px] flex-none" />
+      {deep && <div className="w-[15px] flex-none" />}
+      <KeyRound
+        size={14}
+        className={cn(
+          "flex-none",
+          isPrimary ? "text-yellow-400" : index.unique ? "text-primary" : "",
+        )}
+      />
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">
         {index.name}
         {index.columns && (
-          <span className="indexColumns"> ({index.columns})</span>
+          <span className="text-muted-foreground"> ({index.columns})</span>
         )}
       </span>
-      {isPrimary && <span className="indexBadge pk">PK</span>}
-      {!isPrimary && index.unique && <span className="indexBadge uq">UQ</span>}
+      {isPrimary && (
+        <Badge className="h-auto rounded px-[5px] py-[3px] text-[10px] font-bold leading-none border-yellow-500/30 bg-yellow-400/10 text-yellow-400">
+          PK
+        </Badge>
+      )}
+      {!isPrimary && index.unique && (
+        <Badge className="h-auto rounded px-[5px] py-[3px] text-[10px] font-bold leading-none border-primary/30 bg-primary/10 text-primary">
+          UQ
+        </Badge>
+      )}
       {columnCount > 1 && (
-        <span className="indexBadge cols">{columnCount} cols</span>
+        <Badge
+          variant="secondary"
+          className="h-auto rounded px-[5px] py-[3px] text-[10px] font-bold leading-none"
+        >
+          {columnCount} cols
+        </Badge>
       )}
     </div>
   );
@@ -377,9 +455,12 @@ function RedisKeyVirtualList({ keys, onOpenTable, onDeleteRedisKey }) {
     overscan: 12,
   });
   return (
-    <div ref={parentRef} className="redisVirtualList">
+    <div
+      ref={parentRef}
+      className="max-h-[60vh] min-h-30 overflow-auto [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]"
+    >
       <div
-        className="redisVirtualListInner"
+        className="relative w-full"
         style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
       >
         {rowVirtualizer.getVirtualItems().map((vi) => {
@@ -387,7 +468,10 @@ function RedisKeyVirtualList({ keys, onOpenTable, onDeleteRedisKey }) {
           return (
             <div
               key={key.name}
-              className="treeItem redisKeyItem"
+              className={cn(
+                treeItemClasses,
+                "cursor-pointer",
+              )}
               role="button"
               tabIndex={0}
               onClick={() => onOpenTable(key)}
@@ -406,15 +490,22 @@ function RedisKeyVirtualList({ keys, onOpenTable, onDeleteRedisKey }) {
                 transform: `translateY(${vi.start}px)`,
               }}
             >
-              <div className="treeIndent" />
-              <Table2 size={14} />
-              <span className="treeKeyLabel" title={key.name}>
+              <div className="w-[15px] flex-none" />
+              <Table2 size={14} className="flex-none" />
+              <span
+                className="min-w-0 flex-1 truncate font-mono text-xs"
+                title={key.name}
+              >
                 {key.name}
               </span>
-              <small>{key.type}</small>
-              <button
+              <small className="flex-none text-xs text-muted-foreground">
+                {key.type}
+              </small>
+              <Button
                 type="button"
-                className="iconButton treeRowAction"
+                variant="ghost"
+                size="icon-sm"
+                className="size-6 flex-none p-1 text-muted-foreground hover:text-foreground"
                 title={`Delete ${key.name}`}
                 aria-label={`Delete ${key.name}`}
                 onClick={(event) => {
@@ -423,8 +514,8 @@ function RedisKeyVirtualList({ keys, onOpenTable, onDeleteRedisKey }) {
                   onDeleteRedisKey?.(key);
                 }}
               >
-                <Trash2 size={14} />
-              </button>
+                <Trash2 className="size-3.5" />
+              </Button>
             </div>
           );
         })}
@@ -460,60 +551,84 @@ function ConnectionTreeInner({
     return null;
   }
 
+  const branchButton = (label, count, icon, isOpenFlag, onClick) => (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn(treeItemClasses, "min-w-0 gap-0")}
+      onClick={onClick}
+    >
+      <span className="flex size-4 flex-none items-center justify-center text-muted-foreground">
+        {isOpenFlag ? (
+          <ChevronDown size={14} />
+        ) : (
+          <ChevronRight size={14} />
+        )}
+      </span>
+      {icon}
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+      <small className="ml-auto flex-none text-xs text-muted-foreground">
+        {count}
+      </small>
+    </Button>
+  );
+
   if (isRedis) {
     return (
       <>
-        <div className="treeBranch">
-          <button className="treeItem" onClick={() => onToggle("databases")}>
-            <div className="treeChevron">
-              {expanded[`${connId}_databases`] ? (
-                <ChevronDown size={14} />
-              ) : (
-                <ChevronRight size={14} />
-              )}
-            </div>
-            <Database size={14} />
-            <span>Databases</span>
-            <small>{databases.length}</small>
-          </button>
+        <div className="flex flex-col">
+          {branchButton(
+            "Databases",
+            databases.length,
+            <Database size={14} className="flex-none" />,
+            expanded[`${connId}_databases`],
+            () => onToggle("databases"),
+          )}
           {expanded[`${connId}_databases`] && (
-            <div className="treeChildren">
+            <div className="ml-3.5 flex flex-col border-l border-border pl-2">
               {databases.map((db) => {
                 const name = typeof db === "string" ? db : db.name;
                 const keyCount = typeof db === "string" ? 0 : db.size;
                 return (
-                  <button
+                  <Button
                     key={name}
-                    className={`treeItem ${activeDatabase === name ? "active" : ""}`}
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      treeItemClasses,
+                      "min-w-0",
+                      activeDatabase === name && "bg-accent text-foreground",
+                    )}
                     onClick={() => onOpenDatabase(name)}
                   >
-                    <div className="treeIndent" />
-                    <Database size={14} />
-                    <span>db{name}</span>
-                    <small>{keyCount} keys</small>
-                  </button>
+                    <div className="w-[15px] flex-none" />
+                    <Database size={14} className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      db{name}
+                    </span>
+                    <small className="ml-auto flex-none text-xs text-muted-foreground">
+                      {keyCount} keys
+                    </small>
+                  </Button>
                 );
               })}
             </div>
           )}
         </div>
-        <div className="treeBranch">
-          <button className="treeItem" onClick={() => onToggle("tables")}>
-            <div className="treeChevron">
-              {isOpen("tables") ? (
-                <ChevronDown size={14} />
-              ) : (
-                <ChevronRight size={14} />
-              )}
-            </div>
-            <Table2 size={14} />
-            <span>Keys</span>
-            <small>{tables.length}</small>
-          </button>
+        <div className="flex flex-col">
+          {branchButton(
+            "Keys",
+            tables.length,
+            <Table2 size={14} className="flex-none" />,
+            isOpen("tables"),
+            () => onToggle("tables"),
+          )}
           {isOpen("tables") && (
-            <div className="treeChildren">
+            <div className="ml-3.5 flex flex-col border-l border-border pl-2">
               {tables.length === 0 && (
-                <div className="treeEmpty">No keys found</div>
+                <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                  No keys found
+                </div>
               )}
               {tables.length > 0 && (
                 <RedisKeyVirtualList
@@ -532,33 +647,36 @@ function ConnectionTreeInner({
   return (
     <>
       {databases.length > 1 && (
-        <div className="treeBranch">
-          <button className="treeItem" onClick={() => onToggle("databases")}>
-            <div className="treeChevron">
-              {expanded[`${connId}_databases`] ? (
-                <ChevronDown size={14} />
-              ) : (
-                <ChevronRight size={14} />
-              )}
-            </div>
-            <Database size={14} />
-            <span>Databases</span>
-            <small>{databases.length}</small>
-          </button>
+        <div className="flex flex-col">
+          {branchButton(
+            "Databases",
+            databases.length,
+            <Database size={14} className="flex-none" />,
+            expanded[`${connId}_databases`],
+            () => onToggle("databases"),
+          )}
           {expanded[`${connId}_databases`] && (
-            <div className="treeChildren">
+            <div className="ml-3.5 flex flex-col border-l border-border pl-2">
               {databases.map((db) => {
                 const name = typeof db === "string" ? db : db.name;
                 return (
-                  <button
+                  <Button
                     key={name}
-                    className={`treeItem ${activeDatabase === name ? "active" : ""}`}
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      treeItemClasses,
+                      "min-w-0",
+                      activeDatabase === name && "bg-accent text-foreground",
+                    )}
                     onClick={() => onOpenDatabase(name)}
                   >
-                    <div className="treeIndent" />
-                    <Database size={14} />
-                    <span>{name}</span>
-                  </button>
+                    <div className="w-[15px] flex-none" />
+                    <Database size={14} className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {name}
+                    </span>
+                  </Button>
                 );
               })}
             </div>
@@ -566,23 +684,18 @@ function ConnectionTreeInner({
         </div>
       )}
 
-      <div className="treeBranch">
-        <button className="treeItem" onClick={() => onToggle("tables")}>
-          <div className="treeChevron">
-            {isOpen("tables") ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-          </div>
-          <Table2 size={14} />
-          <span>{isMongoDB ? "Collections" : "Tables"}</span>
-          <small>{tables.length}</small>
-        </button>
+      <div className="flex flex-col">
+        {branchButton(
+          isMongoDB ? "Collections" : "Tables",
+          tables.length,
+          <Table2 size={14} className="flex-none" />,
+          isOpen("tables"),
+          () => onToggle("tables"),
+        )}
         {isOpen("tables") && (
-          <div className="treeChildren">
+          <div className="ml-3.5 flex flex-col border-l border-border pl-2">
             {tables.length === 0 && (
-              <div className="treeEmpty">
+              <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
                 {isMongoDB ? "No collections found" : "No tables found"}
               </div>
             )}
@@ -598,12 +711,15 @@ function ConnectionTreeInner({
                   String(table.name).toLowerCase(),
               );
               return (
-                <div key={`${table.schema}.${table.name}`} className="treeBranch">
-                  <div className="tableRow">
-                    <div className="treeIndent" />
+                <div
+                  key={`${table.schema}.${table.name}`}
+                  className="flex flex-col"
+                >
+                  <div className="flex items-center">
+                    <div className="w-[15px] flex-none" />
                     {canExpandIndexes && (
                       <span
-                        className="treeChevron"
+                        className="flex size-6 flex-none cursor-pointer items-center justify-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                         role="button"
                         tabIndex={0}
                         aria-expanded={isOpen(tableKey)}
@@ -623,19 +739,29 @@ function ConnectionTreeInner({
                         )}
                       </span>
                     )}
-                    <button
-                      className="treeItem"
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={cn(treeItemClasses, "min-w-0 flex-1")}
                       onClick={() => onOpenTable(table)}
                     >
-                      <Table2 size={14} />
-                      <span>{table.name}</span>
-                      {table.schema && <small>{table.schema}</small>}
-                    </button>
+                      <Table2 size={14} className="flex-none" />
+                      <span className="min-w-0 flex-1 truncate text-left">
+                        {table.name}
+                      </span>
+                      {table.schema && (
+                        <small className="ml-auto max-w-[35%] flex-none truncate text-xs text-muted-foreground">
+                          {table.schema}
+                        </small>
+                      )}
+                    </Button>
                   </div>
                   {canExpandIndexes && isOpen(tableKey) && (
-                    <div className="treeChildren">
+                    <div className="ml-3.5 flex flex-col border-l border-border pl-2">
                       {tableIndexes.length === 0 && (
-                        <div className="treeEmpty">No indexes</div>
+                        <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                          No indexes
+                        </div>
                       )}
                       {tableIndexes.map((index) => (
                         <IndexRow
@@ -653,35 +779,40 @@ function ConnectionTreeInner({
         )}
       </div>
 
-      <div className="treeBranch">
-        <button className="treeItem" onClick={() => onToggle("views")}>
-          <div className="treeChevron">
-            {isOpen("views") ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-          </div>
-          <View size={14} />
-          <span>Views</span>
-          <small>{views.length}</small>
-        </button>
+      <div className="flex flex-col">
+        {branchButton(
+          "Views",
+          views.length,
+          <View size={14} className="flex-none" />,
+          isOpen("views"),
+          () => onToggle("views"),
+        )}
         {isOpen("views") && (
-          <div className="treeChildren">
+          <div className="ml-3.5 flex flex-col border-l border-border pl-2">
             {views.length === 0 && (
-              <div className="treeEmpty">No views found</div>
+              <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                No views found
+              </div>
             )}
             {views.map((view) => (
-              <button
+              <Button
                 key={`${view.schema}.${view.name}`}
-                className="treeItem"
+                variant="ghost"
+                size="sm"
+                className={cn(treeItemClasses, "min-w-0")}
                 onClick={() => onOpenTable(view)}
               >
-                <div className="treeIndent" />
-                <View size={14} />
-                <span>{view.name}</span>
-                {view.schema && <small>{view.schema}</small>}
-              </button>
+                <div className="w-[15px] flex-none" />
+                <View size={14} className="flex-none" />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {view.name}
+                </span>
+                {view.schema && (
+                  <small className="ml-auto max-w-[35%] flex-none truncate text-xs text-muted-foreground">
+                    {view.schema}
+                  </small>
+                )}
+              </Button>
             ))}
           </div>
         )}
@@ -689,67 +820,77 @@ function ConnectionTreeInner({
 
       {(driver === "postgres" || driver === "timescaledb" || driver === "mysql") && (
         <>
-          <div className="treeBranch">
-            <button className="treeItem" onClick={() => onToggle("functions")}>
-              <div className="treeChevron">
-                {isOpen("functions") ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </div>
-              <Activity size={14} />
-              <span>Functions</span>
-              <small>{functions.length}</small>
-            </button>
+          <div className="flex flex-col">
+            {branchButton(
+              "Functions",
+              functions.length,
+              <Activity size={14} className="flex-none" />,
+              isOpen("functions"),
+              () => onToggle("functions"),
+            )}
             {isOpen("functions") && (
-              <div className="treeChildren">
+              <div className="ml-3.5 flex flex-col border-l border-border pl-2">
                 {functions.length === 0 && (
-                  <div className="treeEmpty">No functions found</div>
+                  <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                    No functions found
+                  </div>
                 )}
                 {functions.map((func) => (
-                  <button
+                  <Button
                     key={`${func.schema}.${func.name}`}
-                    className="treeItem"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(treeItemClasses, "min-w-0 cursor-default")}
                   >
-                    <div className="treeIndent" />
-                    <Activity size={14} />
-                    <span>{func.name}</span>
-                    {func.schema && <small>{func.schema}</small>}
-                  </button>
+                    <div className="w-[15px] flex-none" />
+                    <Activity size={14} className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {func.name}
+                    </span>
+                    {func.schema && (
+                      <small className="ml-auto max-w-[35%] flex-none truncate text-xs text-muted-foreground">
+                        {func.schema}
+                      </small>
+                    )}
+                  </Button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="treeBranch">
-            <button className="treeItem" onClick={() => onToggle("procedures")}>
-              <div className="treeChevron">
-                {isOpen("procedures") ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </div>
-              <Activity size={14} />
-              <span>Procedures</span>
-              <small>{procedures.length}</small>
-            </button>
+          <div className="flex flex-col">
+            {branchButton(
+              "Procedures",
+              procedures.length,
+              <Activity size={14} className="flex-none" />,
+              isOpen("procedures"),
+              () => onToggle("procedures"),
+            )}
             {isOpen("procedures") && (
-              <div className="treeChildren">
+              <div className="ml-3.5 flex flex-col border-l border-border pl-2">
                 {procedures.length === 0 && (
-                  <div className="treeEmpty">No procedures found</div>
+                  <div className="px-2 py-1.5 pl-8 text-xs text-muted-foreground">
+                    No procedures found
+                  </div>
                 )}
                 {procedures.map((proc) => (
-                  <button
+                  <Button
                     key={`${proc.schema}.${proc.name}`}
-                    className="treeItem"
+                    variant="ghost"
+                    size="sm"
+                    className={cn(treeItemClasses, "min-w-0 cursor-default")}
                   >
-                    <div className="treeIndent" />
-                    <Activity size={14} />
-                    <span>{proc.name}</span>
-                    {proc.schema && <small>{proc.schema}</small>}
-                  </button>
+                    <div className="w-[15px] flex-none" />
+                    <Activity size={14} className="flex-none" />
+                    <span className="min-w-0 flex-1 truncate text-left">
+                      {proc.name}
+                    </span>
+                    {proc.schema && (
+                      <small className="ml-auto max-w-[35%] flex-none truncate text-xs text-muted-foreground">
+                        {proc.schema}
+                      </small>
+                    )}
+                  </Button>
                 ))}
               </div>
             )}

@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { Loader2, PlugZap } from "lucide-react";
 import { aiProviderDefaults, aiProviderLabel, api } from "../utils/api";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Button } from "@/components/ui/button";
 
 export function AiSettingsForm({ settings, onChange, onToast, onTested }) {
   const [testing, setTesting] = useState(false);
@@ -44,30 +48,33 @@ export function AiSettingsForm({ settings, onChange, onToast, onTested }) {
   const requiresKey = aiProviderDefaults[settings.provider]?.requiresKey;
 
   return (
-    <div className="aiSettingsForm">
-      <label>
-        Provider
-        <select value={settings.provider || "openai"} onChange={(e) => changeProvider(e.target.value)}>
+    <FieldGroup className="gap-3">
+      <Field>
+        <FieldLabel>Provider</FieldLabel>
+        <NativeSelect
+          value={settings.provider || "openai"}
+          onChange={(e) => changeProvider(e.target.value)}
+        >
           {Object.keys(aiProviderDefaults).map((provider) => (
             <option key={provider} value={provider}>
               {aiProviderLabel(provider)}
             </option>
           ))}
-        </select>
-      </label>
-      <label>
-        Base URL
-        <input
+        </NativeSelect>
+      </Field>
+      <Field>
+        <FieldLabel>Base URL</FieldLabel>
+        <Input
           value={settings.baseUrl || ""}
           placeholder={aiProviderDefaults[settings.provider]?.baseUrl || "https://api.example.com/v1"}
           spellCheck={false}
           onChange={(e) => update("baseUrl", e.target.value)}
         />
-      </label>
+      </Field>
       {requiresKey !== false && (
-        <label>
-          API Key
-          <input
+        <Field>
+          <FieldLabel>API Key</FieldLabel>
+          <Input
             type="password"
             value={settings.apiKey || ""}
             placeholder="sk-..."
@@ -75,11 +82,11 @@ export function AiSettingsForm({ settings, onChange, onToast, onTested }) {
             autoComplete="off"
             onChange={(e) => update("apiKey", e.target.value)}
           />
-        </label>
+        </Field>
       )}
-      <label>
-        Model
-        <input
+      <Field>
+        <FieldLabel>Model</FieldLabel>
+        <Input
           value={settings.model || ""}
           placeholder={aiProviderDefaults[settings.provider]?.model || "model name"}
           list="ai-model-options"
@@ -93,14 +100,28 @@ export function AiSettingsForm({ settings, onChange, onToast, onTested }) {
             ))}
           </datalist>
         )}
-      </label>
-      <div className="rowActions aiSettingsActions">
-        <button onClick={test} disabled={testing}>
-          {testing ? <Loader2 size={14} className="spin" /> : <PlugZap size={14} />}
+      </Field>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" onClick={test} disabled={testing}>
+          {testing ? (
+            <Loader2 className="animate-spin" data-icon="inline-start" />
+          ) : (
+            <PlugZap data-icon="inline-start" />
+          )}
           {testing ? "Testing..." : "Test connection"}
-        </button>
+        </Button>
+        {result && (
+          <p
+            className={
+              result.startsWith("Connected")
+                ? "text-xs text-emerald-400"
+                : "whitespace-pre-wrap text-xs text-red-400"
+            }
+          >
+            {result}
+          </p>
+        )}
       </div>
-      {result && <p className={result.startsWith("Connected") ? "aiSettingsOk" : "aiSettingsErr"}>{result}</p>}
-    </div>
+    </FieldGroup>
   );
 }
