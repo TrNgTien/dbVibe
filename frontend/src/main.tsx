@@ -2231,7 +2231,7 @@ function App() {
               open
               onOpenChange={(open) => !open && setShowTableDetail(false)}
             >
-              <DialogContent className="w-[min(1240px,calc(100vw-3.5rem))] max-w-full overflow-y-auto">
+              <DialogContent className="w-[min(75vw,calc(100vw-3.5rem))] max-w-full overflow-y-auto sm:max-w-none">
                 <DialogHeader>
                   <DialogTitle>
                     {tableDetail.table?.schema
